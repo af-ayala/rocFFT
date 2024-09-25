@@ -29,7 +29,7 @@ Documentation for rocFFT is available at
 * Support gfx1151, gfx1200, and gfx1201 architectures.
 * Replace Boost Program Options with CLI11 as the command line parser for clients and samples.
 
-## rocFFT 1.0.30 for ROCm 6.2.2
+## rocFFT 1.0.30 for ROCm 6.2.3
 
 ### Optimizations
 
