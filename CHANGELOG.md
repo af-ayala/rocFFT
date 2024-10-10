@@ -39,7 +39,7 @@ Documentation for rocFFT is available at
 
 * Fixed plan creation failure on some even-length real-complex transforms that use Bluestein's algorithm.
 
-### Additions
+### Added
 
 * GFX1151 Support
 
