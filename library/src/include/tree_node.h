@@ -1324,6 +1324,45 @@ struct CommAllToAllv : public MultiPlanItem
     }
 };
 
+// Whenever possible, rocFFT relies on MPI_Alltoall instead of MPI_Alltoallv,
+// since the former tends to be faster.
+struct CommAllToAll : public MultiPlanItem
+{
+    CommAllToAll() = default;
+
+    rocfft_precision  precision;
+    rocfft_array_type arrayType;
+
+    // counts per rank are the same for sender and receiver ranks
+    size_t count_per_rank;
+
+    // send/receive buffers
+    BufferPtr sendBuf;
+    BufferPtr recvBuf;
+
+    void ExecuteAsync(const rocfft_plan     plan,
+                      void*                 in_buffer[],
+                      void*                 out_buffer[],
+                      rocfft_execution_info info,
+                      size_t                multiPlanIdx) override;
+
+    void Wait() override;
+
+    void Print(rocfft_ostream& os, const int indent) const override;
+
+    bool WritesToBuffer(const BufferPtr& ptr) const override
+    {
+        // only writes to receive buffer
+        return ptr == recvBuf;
+    }
+
+    bool ExecutesOnRank(int comm_rank) const override
+    {
+        // runs on all ranks
+        return true;
+    }
+};
+
 // Tree-structured FFT plan.  This is specific to a single device on
 // a single rank, since the TreeNodes inside here will have device
 // memory allocated for things like kernel arguments and twiddles.

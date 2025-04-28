@@ -1,4 +1,4 @@
-// Copyright (C) 2020 - 2023 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2020 - 2025 Advanced Micro Devices, Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -979,6 +979,64 @@ void CommAllToAllv::Print(rocfft_ostream& os, const int indent) const
     printVec("sendCounts", sendCounts);
     printVec("recvOffsets", recvOffsets);
     printVec("recvCounts", recvCounts);
+}
+
+void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
+                                void*                 in_buffer[],
+                                void*                 out_buffer[],
+                                rocfft_execution_info info,
+                                size_t                multiPlanIdx)
+{
+    if(LOG_PLAN_ENABLED())
+    {
+        log_plan("MPI_Ialltoall\n");
+    }
+
+#ifdef ROCFFT_MPI_ENABLE
+
+    const auto elem_size        = element_size(precision, arrayType);
+    const auto comm             = plan->desc.mpi_comm;
+    int        send_count_bytes = 0;
+
+    if(count_per_rank * elem_size > static_cast<size_t>(std::numeric_limits<int>::max()))
+        throw std::runtime_error("MPI integer limit exceeded in CommAllToAll");
+
+    send_count_bytes = static_cast<int>(count_per_rank * elem_size);
+
+    MPI_Request request;
+    const auto  mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
+                                      send_count_bytes,
+                                      MPI_CHAR,
+                                      recvBuf.get(in_buffer, out_buffer, local_comm_rank),
+                                      send_count_bytes,
+                                      MPI_CHAR,
+                                      comm,
+                                      &request);
+
+    if(mpiret != MPI_SUCCESS)
+        throw std::runtime_error("MPI_Ialltoall failed: " + std::to_string(mpiret));
+
+    comm_requests.push_back(request);
+
+#else
+    throw std::runtime_error("CommAllToAll not implemented");
+#endif
+}
+
+void CommAllToAll::Wait()
+{
+    WaitCommRequests();
+}
+
+void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
+{
+    std::string indentStr;
+    int         i = indent;
+    while(i--)
+        indentStr += "    ";
+
+    os << indentStr << "CommAllToAll " << precision_name(precision) << " "
+       << PrintArrayType(arrayType) << ": count_per_rank = " << count_per_rank << "\n";
 }
 
 void ExecPlan::Print(rocfft_ostream& os, const int indent) const
