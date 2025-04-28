@@ -996,7 +996,6 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
     const auto elem_size        = element_size(precision, arrayType);
     const auto comm             = plan->desc.mpi_comm;
-    const auto comm_size        = plan->get_local_comm_size();
     int        send_count_bytes = 0;
 
     if(count_per_rank * elem_size > static_cast<size_t>(std::numeric_limits<int>::max()))
@@ -1005,10 +1004,10 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     send_count_bytes = static_cast<int>(count_per_rank * elem_size);
 
     MPI_Request request;
-    const auto  mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, get_local_comm_rank()),
+    const auto  mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
                                       send_count_bytes,
                                       MPI_CHAR,
-                                      recvBuf.get(in_buffer, out_buffer, get_local_comm_rank()),
+                                      recvBuf.get(in_buffer, out_buffer, local_comm_rank),
                                       send_count_bytes,
                                       MPI_CHAR,
                                       comm,

@@ -2269,7 +2269,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     // check if communication layout allows to use All-to-All instead of All-to-All-v
     bool   uniform_counts = true;
     size_t expected_count = send_counts[0];
-    for(size_t i = 0; i < local_comm_size; ++i)
+    for(int i = 0; i < local_comm_size; ++i)
     {
         if(send_counts[i] != expected_count || recv_counts[i] != expected_count)
         {
