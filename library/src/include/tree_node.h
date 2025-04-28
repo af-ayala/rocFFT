@@ -759,7 +759,7 @@ public:
         : comm_rank(comm_rank)
     {
     }
-    InternalTempBuffer(const InternalTempBuffer&) = delete;
+    InternalTempBuffer(const InternalTempBuffer&)            = delete;
     InternalTempBuffer& operator=(const InternalTempBuffer&) = delete;
     ~InternalTempBuffer()                                    = default;
 
@@ -815,8 +815,8 @@ private:
 class BufferPtr
 {
 public:
-    BufferPtr()                 = default;
-    BufferPtr(const BufferPtr&) = default;
+    BufferPtr()                            = default;
+    BufferPtr(const BufferPtr&)            = default;
     BufferPtr& operator=(const BufferPtr&) = default;
     ~BufferPtr()                           = default;
 
@@ -943,7 +943,7 @@ struct MultiPlanItem
 {
     MultiPlanItem();
     virtual ~MultiPlanItem();
-    MultiPlanItem(const MultiPlanItem&) = delete;
+    MultiPlanItem(const MultiPlanItem&)            = delete;
     MultiPlanItem& operator=(const MultiPlanItem&) = delete;
 
     // multi-process requests
@@ -1307,6 +1307,45 @@ struct CommAllToAllv : public MultiPlanItem
                       void*                 out_buffer[],
                       rocfft_execution_info info,
                       size_t                multiPlanIdx) override;
+    void Wait() override;
+
+    void Print(rocfft_ostream& os, const int indent) const override;
+
+    bool WritesToBuffer(const BufferPtr& ptr) const override
+    {
+        // only writes to receive buffer
+        return ptr == recvBuf;
+    }
+
+    bool ExecutesOnRank(int comm_rank) const override
+    {
+        // runs on all ranks
+        return true;
+    }
+};
+
+// Whenever possible, rocFFT relies on MPI_Alltoall instead of MPI_Alltoallv,
+// since the former tends to be faster.
+struct CommAllToAll : public MultiPlanItem
+{
+    CommAllToAll() = default;
+
+    rocfft_precision  precision;
+    rocfft_array_type arrayType;
+
+    // counts per rank are the same for sender and receiver ranks
+    size_t count_per_rank;
+
+    // send/receive buffers
+    BufferPtr sendBuf;
+    BufferPtr recvBuf;
+
+    void ExecuteAsync(const rocfft_plan     plan,
+                      void*                 in_buffer[],
+                      void*                 out_buffer[],
+                      rocfft_execution_info info,
+                      size_t                multiPlanIdx) override;
+
     void Wait() override;
 
     void Print(rocfft_ostream& os, const int indent) const override;
