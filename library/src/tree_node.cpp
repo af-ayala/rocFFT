@@ -942,15 +942,14 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
         const int send_count_bytes = static_cast<int>(expected_count * elem_size);
 
-        const auto mpiret = MPI_Ialltoall(
-            sendBuf.get(in_buffer, out_buffer, local_comm_rank),
-            send_count_bytes,
-            MPI_CHAR,
-            recvBuf.get(in_buffer, out_buffer, local_comm_rank),
-            send_count_bytes,
-            MPI_CHAR,
-            plan->desc.mpi_comm,
-            &request);
+        const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
+                                          send_count_bytes,
+                                          MPI_CHAR,
+                                          recvBuf.get(in_buffer, out_buffer, local_comm_rank),
+                                          send_count_bytes,
+                                          MPI_CHAR,
+                                          plan->desc.mpi_comm,
+                                          &request);
 
         if(mpiret != MPI_SUCCESS)
             throw std::runtime_error("MPI_Ialltoall failed: " + std::to_string(mpiret));
