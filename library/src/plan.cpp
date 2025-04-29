@@ -1979,13 +1979,13 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     std::vector<size_t>&       outputItems,
                                     size_t                     transposeNumber)
 {
-    // All-to-all transpose is preferred as it's faster.  But we use
-    // MPI Alltoallv, which requires that each rank have a single base
-    // pointer to send/receive with offsets for every other rank.
+    // All-to-all transpose is preferred as it's faster. This requires
+    // that each rank have a single base pointer to send/receive with
+    // offsets for every other rank.
     // That's only feasible if each rank has data on just one device
     // (since we can hipMalloc a single buffer per device and have
     // offsets into it).
-    //
+
     // Fall back to point-to-point transfers if all-to-all is not
     // possible.
     std::string itemGroup = "transpose_" + std::to_string(transposeNumber);
@@ -1997,6 +1997,8 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
     }
     else
     {
+        // GlobalTransposeA2A will use MPI_Ialltoall when possible,
+        // falling back to MPI_Ialltoallv otherwise.
         GlobalTransposeA2A(
             elem_size, inField, outField, input, output, inputAntecedents, outputItems, itemGroup);
     }
