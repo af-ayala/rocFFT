@@ -1284,9 +1284,11 @@ private:
 // Send data from all ranks to all ranks in the plan.  Each rank must
 // send from/to a single buffer (with different read/write offsets
 // for each other rank).
-struct CommAllToAllv : public MultiPlanItem
+// The all-to-all communication is performed using MPI_Ialltoall or MPI_Ialltoallv.
+// The former is preferable, as it is usually more optimized.
+struct CommAllToAll : public MultiPlanItem
 {
-    CommAllToAllv() = default;
+    CommAllToAll() = default;
 
     rocfft_precision  precision;
     rocfft_array_type arrayType;
@@ -1307,6 +1309,7 @@ struct CommAllToAllv : public MultiPlanItem
                       void*                 out_buffer[],
                       rocfft_execution_info info,
                       size_t                multiPlanIdx) override;
+
     void Wait() override;
 
     void Print(rocfft_ostream& os, const int indent) const override;
