@@ -1,4 +1,4 @@
-// Copyright (C) 2016 - 2025 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2016 - 2024 Advanced Micro Devices, Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -2266,68 +2266,28 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
         }
     }
 
-    // check if communication layout allows to use All-to-All instead of All-to-All-v
-    bool   uniform_counts = true;
-    size_t expected_count = send_counts[0];
-    for(int i = 0; i < local_comm_size; ++i)
+    // add the all-to-all op itself, which depends on pack ops
+    auto alltoall_ptr                   = std::make_unique<CommAllToAllv>();
+    alltoall_ptr->precision             = precision;
+    alltoall_ptr->arrayType             = desc.inArrayType;
+    alltoall_ptr->sendOffsets           = send_offsets;
+    alltoall_ptr->sendCounts            = send_counts;
+    alltoall_ptr->recvOffsets           = recv_offsets;
+    alltoall_ptr->recvCounts            = recv_counts;
+    alltoall_ptr->sendBuf               = BufferPtr::temp(send_buf.data());
+    alltoall_ptr->recvBuf               = BufferPtr::temp(recv_buf.data());
+    auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
+    multiPlan[alltoall_op]->group       = itemGroup;
+    multiPlan[alltoall_op]->description = "all-to-all communication";
+
+    // update the unpack ops to depend on the all-to-all
+    for(auto op : unpack_ops)
     {
-        if(send_counts[i] != expected_count || recv_counts[i] != expected_count)
-        {
-            uniform_counts = false;
-            break;
-        }
+        AddAntecedent(op, alltoall_op);
     }
 
-    if(uniform_counts)
-    {
-        // Use CommAllToAll framework if send/recv counts are uniform
-        // across ranks
-        auto alltoall_ptr            = std::make_unique<CommAllToAll>();
-        alltoall_ptr->precision      = precision;
-        alltoall_ptr->arrayType      = desc.inArrayType;
-        alltoall_ptr->sendBuf        = BufferPtr::temp(send_buf.data());
-        alltoall_ptr->recvBuf        = BufferPtr::temp(recv_buf.data());
-        alltoall_ptr->count_per_rank = expected_count;
-
-        auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
-        multiPlan[alltoall_op]->group       = itemGroup;
-        multiPlan[alltoall_op]->description = "all-to-all communication (MPI_Ialltoall)";
-
-        // update the unpack ops to depend on the all-to-all
-        for(auto op : unpack_ops)
-        {
-            AddAntecedent(op, alltoall_op);
-        }
-
-        outputItems = unpack_ops;
-    }
-    else
-    {
-        // fallback to CommAllToAllv
-        // add the all-to-all op itself, which depends on pack ops
-        auto alltoall_ptr         = std::make_unique<CommAllToAllv>();
-        alltoall_ptr->precision   = precision;
-        alltoall_ptr->arrayType   = desc.inArrayType;
-        alltoall_ptr->sendOffsets = send_offsets;
-        alltoall_ptr->sendCounts  = send_counts;
-        alltoall_ptr->recvOffsets = recv_offsets;
-        alltoall_ptr->recvCounts  = recv_counts;
-        alltoall_ptr->sendBuf     = BufferPtr::temp(send_buf.data());
-        alltoall_ptr->recvBuf     = BufferPtr::temp(recv_buf.data());
-
-        auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
-        multiPlan[alltoall_op]->group       = itemGroup;
-        multiPlan[alltoall_op]->description = "all-to-all communication (MPI_Ialltoallv)";
-
-        // update the unpack ops to depend on the all-to-all
-        for(auto op : unpack_ops)
-        {
-            AddAntecedent(op, alltoall_op);
-        }
-
-        // subsequent operations can depend on the unpack ops
-        outputItems = unpack_ops;
-    }
+    // subsequent operations can depend on the unpack ops
+    outputItems = unpack_ops;
 }
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
