@@ -1,4 +1,4 @@
-// Copyright (C) 2016 - 2024 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2016 - 2025 Advanced Micro Devices, Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -2267,7 +2267,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     }
 
     // add the all-to-all op itself, which depends on pack ops
-    auto alltoall_ptr                   = std::make_unique<CommAllToAllv>();
+    auto alltoall_ptr                   = std::make_unique<CommAllToAll>();
     alltoall_ptr->precision             = precision;
     alltoall_ptr->arrayType             = desc.inArrayType;
     alltoall_ptr->sendOffsets           = send_offsets;
