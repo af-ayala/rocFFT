@@ -918,16 +918,9 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     const auto elem_size = element_size(precision, arrayType);
 
     // check if uniform counts
-    bool   uniform_counts = true;
-    size_t expected_count = sendCounts[0];
-    for(size_t i = 0; i < num_ranks; ++i)
-    {
-        if(sendCounts[i] != expected_count || recvCounts[i] != expected_count)
-        {
-            uniform_counts = false;
-            break;
-        }
-    }
+    auto count_matches_first = [&](size_t count) { return count == sendCounts[0]; };
+    bool uniform_counts = std::all_of(sendCounts.begin(), sendCounts.end(), count_matches_first)
+                          || std::all_of(recvCounts.begin(), recvCounts.end(), count_matches_first);
 
     MPI_Request request;
 
@@ -936,11 +929,11 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");
 
-        if(expected_count * elem_size > static_cast<size_t>(std::numeric_limits<int>::max()))
+        if(sendCounts[0] * elem_size > static_cast<size_t>(std::numeric_limits<int>::max()))
             throw std::runtime_error(
                 "CommAllToAll: element size * count_per_rank exceeds MPI_INT limit");
 
-        const int send_count_bytes = static_cast<int>(expected_count * elem_size);
+        const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
         const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
@@ -1021,19 +1014,9 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
     };
 
     // determine whether counts are uniform
-    bool uniform_counts = true;
-    if(!sendCounts.empty())
-    {
-        const size_t expected = sendCounts[0];
-        for(const auto& count : sendCounts)
-        {
-            if(count != expected)
-            {
-                uniform_counts = false;
-                break;
-            }
-        }
-    }
+    auto count_matches_first = [&](size_t count) { return count == sendCounts[0]; };
+    bool uniform_counts = std::all_of(sendCounts.begin(), sendCounts.end(), count_matches_first)
+                          || std::all_of(recvCounts.begin(), recvCounts.end(), count_matches_first);
 
     os << indentStr << "CommAllToAll " << precision_name(precision) << " "
        << PrintArrayType(arrayType) << (uniform_counts ? " (MPI_Ialltoall)" : " (MPI_alltoallv)")
