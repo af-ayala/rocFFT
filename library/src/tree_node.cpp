@@ -920,7 +920,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     // check if uniform counts
     auto count_matches_first = [&](size_t count) { return count == sendCounts[0]; };
     bool uniform_counts = std::all_of(sendCounts.begin(), sendCounts.end(), count_matches_first)
-                          || std::all_of(recvCounts.begin(), recvCounts.end(), count_matches_first);
+                          && std::all_of(recvCounts.begin(), recvCounts.end(), count_matches_first);
 
     MPI_Request request;
 
@@ -930,8 +930,11 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             log_plan("Using MPI_Ialltoall\n");
 
         if(sendCounts[0] * elem_size > static_cast<size_t>(std::numeric_limits<int>::max()))
-            throw std::runtime_error(
-                "CommAllToAll: element size * count_per_rank exceeds MPI_INT limit");
+        {
+            std::cerr << "Rank " << local_comm_rank
+                      << ": element size * count_per_rank exceeds MPI_INT limit\n";
+            MPI_Abort(plan->desc.mpi_comm, 1);
+        }
 
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
@@ -945,7 +948,11 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                           &request);
 
         if(mpiret != MPI_SUCCESS)
-            throw std::runtime_error("MPI_Ialltoall failed: " + std::to_string(mpiret));
+        {
+            std::cerr << "MPI_Ialltoall failed on rank " << local_comm_rank
+                      << " with error: " << mpiret << std::endl;
+            MPI_Abort(plan->desc.mpi_comm, mpiret);
+        }
     }
     else
     {
@@ -954,12 +961,15 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             log_plan("Using MPI_Ialltoallv\n");
 
         // MPI takes ints for everything, convert our size_t elements to int bytes
-        auto convertToInt = [](const std::vector<size_t>& src, std::vector<int>& dest) {
+        auto convertToInt = [&, plan](const std::vector<size_t>& src, std::vector<int>& dest) {
             dest.reserve(src.size());
             for(auto i : src)
             {
                 if(i > std::numeric_limits<int>::max())
-                    throw std::runtime_error("MPI integer limit exceeded");
+                {
+                    std::cerr << ": MPI integer limit exceeded (value = " << i << ")\n";
+                    MPI_Abort(plan->desc.mpi_comm, 2);
+                }
                 dest.push_back(i);
             }
         };
@@ -983,8 +993,13 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                            rocfft_type_to_mpi_type(precision, arrayType),
                                            plan->desc.mpi_comm,
                                            &request);
+
         if(mpiret != MPI_SUCCESS)
-            throw std::runtime_error("MPI_Ialltoallv failed: " + std::to_string(mpiret));
+        {
+            std::cerr << "MPI_Ialltoallv failed on rank " << local_comm_rank
+                      << " with error: " << mpiret << std::endl;
+            MPI_Abort(plan->desc.mpi_comm, mpiret);
+        }
     }
 
     comm_requests.push_back(request);
