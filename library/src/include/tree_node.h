@@ -1304,6 +1304,16 @@ struct CommAllToAll : public MultiPlanItem
     BufferPtr sendBuf;
     BufferPtr recvBuf;
 
+    // enum for error handling for different multi-process communication
+    // libraries such as MPI, RCCL, rocSHMEM, etc.
+    enum CommStatus
+    {
+        COMM_SUCCESS,
+        COMM_MPI_ERROR
+    };
+    CommStatus  comm_status = COMM_SUCCESS;
+    std::string error_message;
+
     void ExecuteAsync(const rocfft_plan     plan,
                       void*                 in_buffer[],
                       void*                 out_buffer[],

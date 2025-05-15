@@ -929,11 +929,13 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");
 
+        // guard against overflow of MPI_INT
         if(sendCounts[0] * elem_size > static_cast<size_t>(std::numeric_limits<int>::max()))
         {
-            std::cerr << "Rank " << local_comm_rank
-                      << ": element size * count_per_rank exceeds MPI_INT limit\n";
-            MPI_Abort(plan->desc.mpi_comm, 1);
+            comm_status   = COMM_MPI_ERROR;
+            error_message = "Rank " + std::to_string(local_comm_rank)
+                            + ": element size * count_per_rank exceeds MPI_INT limit";
+            return;
         }
 
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
@@ -949,30 +951,41 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
         if(mpiret != MPI_SUCCESS)
         {
-            std::cerr << "MPI_Ialltoall failed on rank " << local_comm_rank
-                      << " with error: " << mpiret << std::endl;
-            MPI_Abort(plan->desc.mpi_comm, mpiret);
+            char errmsg[MPI_MAX_ERROR_STRING];
+            int  errlen = 0;
+            MPI_Error_string(mpiret, errmsg, &errlen);
+
+            comm_status   = COMM_MPI_ERROR;
+            error_message = "MPI_Ialltoall failed on rank " + std::to_string(local_comm_rank) + ": "
+                            + std::string(errmsg);
+
+            return;
         }
     }
     else
     {
-
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoallv\n");
 
+        const int local_comm_rank = plan->get_local_comm_rank();
+
         // MPI takes ints for everything, convert our size_t elements to int bytes
-        auto convertToInt = [&, plan](const std::vector<size_t>& src, std::vector<int>& dest) {
-            dest.reserve(src.size());
-            for(auto i : src)
-            {
-                if(i > std::numeric_limits<int>::max())
-                {
-                    std::cerr << ": MPI integer limit exceeded (value = " << i << ")\n";
-                    MPI_Abort(plan->desc.mpi_comm, 2);
-                }
-                dest.push_back(i);
-            }
-        };
+        auto convertToInt
+            = [&, local_comm_rank](const std::vector<size_t>& src, std::vector<int>& dest) {
+                  dest.reserve(src.size());
+                  for(auto i : src)
+                  {
+                      if(i > std::numeric_limits<int>::max())
+                      {
+                          comm_status   = COMM_MPI_ERROR;
+                          error_message = "Rank " + std::to_string(local_comm_rank)
+                                          + ": MPI integer limit exceeded (value = "
+                                          + std::to_string(i) + ")";
+                          return;
+                      }
+                      dest.push_back(static_cast<int>(i));
+                  }
+              };
 
         std::vector<int> intSendOffsets;
         std::vector<int> intSendCounts;
@@ -996,9 +1009,15 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
         if(mpiret != MPI_SUCCESS)
         {
-            std::cerr << "MPI_Ialltoallv failed on rank " << local_comm_rank
-                      << " with error: " << mpiret << std::endl;
-            MPI_Abort(plan->desc.mpi_comm, mpiret);
+            char errmsg[MPI_MAX_ERROR_STRING];
+            int  errlen = 0;
+            MPI_Error_string(mpiret, errmsg, &errlen);
+
+            comm_status   = COMM_MPI_ERROR;
+            error_message = "MPI_Ialltoallv failed on rank " + std::to_string(local_comm_rank)
+                            + ": " + std::string(errmsg);
+
+            return;
         }
     }
 
@@ -1012,6 +1031,12 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 void CommAllToAll::Wait()
 {
     WaitCommRequests();
+
+    if(comm_status == COMM_MPI_ERROR)
+    {
+        // Now it's safe to throw or return error
+        throw std::runtime_error(error_message);
+    }
 }
 
 void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
