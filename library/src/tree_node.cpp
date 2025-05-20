@@ -929,15 +929,6 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");
 
-        // guard against overflow of MPI_INT
-        if(sendCounts[0] * elem_size > static_cast<size_t>(std::numeric_limits<int>::max()))
-        {
-            comm_status   = COMM_MPI_ERROR;
-            error_message = "Rank " + std::to_string(local_comm_rank)
-                            + ": element size * count_per_rank exceeds MPI_INT limit";
-            return;
-        }
-
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
         const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
@@ -970,22 +961,10 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         const int local_comm_rank = plan->get_local_comm_rank();
 
         // MPI takes ints for everything, convert our size_t elements to int bytes
-        auto convertToInt
-            = [&, local_comm_rank](const std::vector<size_t>& src, std::vector<int>& dest) {
-                  dest.reserve(src.size());
-                  for(auto i : src)
-                  {
-                      if(i > std::numeric_limits<int>::max())
-                      {
-                          comm_status   = COMM_MPI_ERROR;
-                          error_message = "Rank " + std::to_string(local_comm_rank)
-                                          + ": MPI integer limit exceeded (value = "
-                                          + std::to_string(i) + ")";
-                          return;
-                      }
-                      dest.push_back(static_cast<int>(i));
-                  }
-              };
+        auto convertToInt = [](const std::vector<size_t>& src, std::vector<int>& dest) {
+            dest.reserve(src.size());
+            std::copy(src.begin(), src.end(), std::back_inserter(dest));
+        };
 
         std::vector<int> intSendOffsets;
         std::vector<int> intSendCounts;

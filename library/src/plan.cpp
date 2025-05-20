@@ -2269,15 +2269,14 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     }
 
     // add the all-to-all op itself, which depends on pack ops
-    auto alltoall_ptr                   = std::make_unique<CommAllToAll>();
-    alltoall_ptr->precision             = precision;
-    alltoall_ptr->arrayType             = desc.inArrayType;
-    alltoall_ptr->sendOffsets           = send_offsets;
-    alltoall_ptr->sendCounts            = send_counts;
-    alltoall_ptr->recvOffsets           = recv_offsets;
-    alltoall_ptr->recvCounts            = recv_counts;
-    alltoall_ptr->sendBuf               = BufferPtr::temp(send_buf.data());
-    alltoall_ptr->recvBuf               = BufferPtr::temp(recv_buf.data());
+    auto alltoall_ptr                   = std::make_unique<CommAllToAll>(precision,
+                                                       desc.inArrayType,
+                                                       send_offsets,
+                                                       send_counts,
+                                                       recv_offsets,
+                                                       recv_counts,
+                                                       BufferPtr::temp(send_buf.data()),
+                                                       BufferPtr::temp(recv_buf.data()));
     auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
     multiPlan[alltoall_op]->group       = itemGroup;
     multiPlan[alltoall_op]->description = "all-to-all communication";
