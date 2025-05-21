@@ -1061,19 +1061,19 @@ struct CommPointToPoint : public MultiPlanItem
     }
 
 private:
-    rocfft_precision  precision;
-    rocfft_array_type arrayType;
+    const rocfft_precision  precision;
+    const rocfft_array_type arrayType;
 
     // number of elements to copy
-    size_t numElems;
+    const size_t numElems;
 
-    rocfft_location_t srcLocation;
-    BufferPtr         srcPtr;
-    size_t            srcOffset = 0;
+    const rocfft_location_t srcLocation;
+    const BufferPtr         srcPtr;
+    const size_t            srcOffset = 0;
 
-    rocfft_location_t destLocation;
-    BufferPtr         destPtr;
-    size_t            destOffset = 0;
+    const rocfft_location_t destLocation;
+    const BufferPtr         destPtr;
+    const size_t            destOffset = 0;
     // Stream to run the async operation in
     hipStream_wrapper_t stream;
     // Event to signal when the async operations are finished.
@@ -1166,10 +1166,10 @@ struct CommScatter : public MultiPlanItem
     }
 
 private:
-    rocfft_precision  precision;
-    rocfft_array_type arrayType;
-    rocfft_location_t srcLocation;
-    BufferPtr         srcPtr;
+    const rocfft_precision  precision;
+    const rocfft_array_type arrayType;
+    const rocfft_location_t srcLocation;
+    const BufferPtr         srcPtr;
 
     std::vector<ScatterOp> ops;
 
@@ -1265,11 +1265,11 @@ struct CommGather : public MultiPlanItem
     }
 
 private:
-    rocfft_precision  precision;
-    rocfft_array_type arrayType;
+    const rocfft_precision  precision;
+    const rocfft_array_type arrayType;
 
-    rocfft_location_t destLocation;
-    BufferPtr         destPtr;
+    const rocfft_location_t destLocation;
+    const BufferPtr         destPtr;
 
     std::vector<GatherOp> ops;
 
@@ -1353,19 +1353,19 @@ struct CommAllToAll : public MultiPlanItem
     }
 
 private:
-    rocfft_precision  precision;
-    rocfft_array_type arrayType;
+    const rocfft_precision  precision;
+    const rocfft_array_type arrayType;
 
     // counts and offsets are all in elements (where element size is
     // knowable from precision + array type), for the current rank
-    std::vector<size_t> sendOffsets;
-    std::vector<size_t> sendCounts;
-    std::vector<size_t> recvOffsets;
-    std::vector<size_t> recvCounts;
+    const std::vector<size_t> sendOffsets;
+    const std::vector<size_t> sendCounts;
+    const std::vector<size_t> recvOffsets;
+    const std::vector<size_t> recvCounts;
 
     // send/receive buffers
-    BufferPtr sendBuf;
-    BufferPtr recvBuf;
+    const BufferPtr sendBuf;
+    const BufferPtr recvBuf;
 };
 
 // Tree-structured FFT plan.  This is specific to a single device on
