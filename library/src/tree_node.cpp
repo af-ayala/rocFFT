@@ -1038,7 +1038,7 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
                           && std::all_of(recvCounts.begin(), recvCounts.end(), count_matches_first);
 
     os << indentStr << "CommAllToAll " << precision_name(precision) << " "
-       << PrintArrayType(arrayType) << (uniform_counts ? " (MPI_Ialltoall)" : " (MPI_alltoallv)")
+       << PrintArrayType(arrayType) << (uniform_counts ? " (MPI_Ialltoall)" : " (MPI_Ialltoallv)")
        << ":\n";
 
     if(uniform_counts)
