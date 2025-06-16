@@ -419,7 +419,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    std::cout << "\nExecution gpu time:";
+    std::cout << "\nExecution time:";
     for(const auto& i : gpu_time)
     {
         std::cout << " " << i;

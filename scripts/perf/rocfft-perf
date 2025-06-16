@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2021 - 2024 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2021 - 2025 Advanced Micro Devices, Inc. All rights reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -273,9 +273,19 @@ def generate_pts_dat(dat):
     rows = []
     for row_idx, sample in enumerate(dat.get_samples()):
         new_row = []
+
         token = sample[0]
-        transform_type, placeness, length, batch, precision = perflib.utils.parse_token(
-            token)
+
+        # sanity check
+        if not token or token.count('_') < 3:
+            print(f"Skipping malformed token on row {row_idx}: '{token}'")
+            continue
+
+        try:
+            transform_type, placeness, length, batch, precision, bricks, gpus, ranks = perflib.utils.parse_token(token)
+        except Exception as e:
+            print(f"Error parsing token on row {row_idx}: '{token}'\nException: {e}")
+            continue
 
         new_row.extend(input_params)
         new_row.insert(1, token)
@@ -287,6 +297,49 @@ def generate_pts_dat(dat):
         else:
             print("multi-batch data format; exiting abnormally")
             sys.exit(1)
+
+        # Multi-process and multi-gpu performance
+        ngpus_per_node = len(gpus)
+        nranks = max(1, len(ranks))
+
+        nnodes = max(1, (nranks + 1) / ngpus_per_node) # assumes 1 gpu per rank
+
+        new_row.append(nranks)
+        new_row.append(ngpus_per_node)
+        new_row.append(nnodes)
+
+        print("Total GPUs:", ngpus_per_node, gpus)
+        print("Total ranks:", nranks, ranks)
+        print("First ifield brick:", bricks['ifield'][0])
+        print("First ofield brick:", bricks['ofield'][0])
+
+        # Input layout
+        input_split_type = perflib.utils.get_decomposition_type(bricks['ifield'], label="ifield")
+        input_grid = perflib.utils.get_proc_grid(bricks['ifield'])
+        new_row.append(input_split_type)
+        new_row.extend(input_grid)
+
+        # Output layout
+        output_split_type = perflib.utils.get_decomposition_type(bricks['ofield'], label="ofield")
+        output_grid = perflib.utils.get_proc_grid(bricks['ofield'])
+        new_row.append(output_split_type)
+        new_row.extend(output_grid)
+
+        # Print debug info
+        '''
+        print("Total GPUs used:", len(gpus))
+        print("Total ranks used:", len(ranks))
+        print("Input  grid dimensions (X, Y, Z):", input_grid)
+        print("Output grid dimensions (X, Y, Z):", output_grid)
+        print("Input  decomposition type:", input_split_type)
+        print("Output decomposition type:", output_split_type)
+
+        print("\nInput brick layout:")
+        perflib.utils.print_mgpu_data_layout(bricks['ifield'])
+        print("\nOutput brick layout:")
+        perflib.utils.print_mgpu_data_layout(bricks['ofield'])
+        '''
+
         new_row.extend(
             mdat_df.loc[row_idx,
                         ['median_sample', 'median_low', 'median_high']].
@@ -314,8 +367,16 @@ def generate_pts_dat(dat):
         header.append('ylength')
     elif dimension == 3:
         header.extend(['ylength', 'zlength'])
+
+    header.append('nbatch')
+
+    # Multi-process headers
     header.extend([
-        'nbatch', 'median_sample', 'median_low', 'median_high', 'nsample',
+    'nprocs', 'ngpus_per_node',  'nnodes',   'input_split_type',  'ingrid_x',  'ingrid_y',  'ingrid_z',  'output_split_type', 'outgrid_x', 'outgrid_y', 'outgrid_z'
+    ])
+
+    header.extend([
+        'median_sample', 'median_low', 'median_high', 'nsample',
         'samples'
     ])
 
