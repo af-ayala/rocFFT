@@ -912,6 +912,12 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 {
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
+    this->comm = plan->desc.mpi_comm;
+
+int rank;
+MPI_Comm_rank(this->comm, &rank);
+std::cerr << "[Rank " << rank << "] Using communicator " << this->comm << std::endl;    
+
     const size_t num_ranks = plan->get_local_comm_size();
     if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
        || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)

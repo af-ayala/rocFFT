@@ -1447,6 +1447,9 @@ private:
     // send/receive buffers
     const BufferPtr sendBuf;
     const BufferPtr recvBuf;
+
+// set during ExecuteAsync, used in Print 
+mutable MPI_Comm comm = MPI_COMM_NULL;    
 };
 
 // Tree-structured FFT plan.  This is specific to a single device on
