@@ -940,13 +940,12 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             log_plan("Using MPI_Ialltoall\n");
 
 
-MPI_Comm comm = plan->desc.use_subcomm ? plan->desc.subcomm : plan->desc.mpi_comm;
-
-if(LOG_TRACE_ENABLED())
+    if(LOG_TRACE_ENABLED())
 {
     auto& os = *LogSingleton::GetInstance().GetTraceOS();
-    Print(os, 1, comm);  // <- Pass it in
-}
+    Print(os, 1);
+}                
+
 
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
@@ -1043,8 +1042,12 @@ void CommAllToAll::Wait()
     }
 }
 
-void CommAllToAll::Print(rocfft_ostream& os, const int indent, MPI_Comm comm) const
+void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
 {
+
+    MPI_Comm comm = plan->desc.mpi_comm;
+    // MPI_Comm comm = plan->desc.use_subcomm ? plan->desc.subcomm : plan->desc.mpi_comm;
+
     std::string indentStr;
     int         i = indent;
     while(i--)
