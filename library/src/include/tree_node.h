@@ -45,6 +45,10 @@
 #include "rtc_kernel.h"
 #include <hip/hip_runtime_api.h>
 
+#ifdef ROCFFT_MPI_ENABLE
+#include <mpi.h>
+#endif
+
 enum NodeType
 {
     NT_UNDEFINED, // un init
