@@ -939,6 +939,13 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");
 
+
+            if(LOG_TRACE_ENABLED())
+        {
+            auto& os = *LogSingleton::GetInstance().GetTraceOS();
+            Print(os, 1);
+        }                
+
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
         const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
@@ -968,6 +975,12 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoallv\n");
 
+            if(LOG_TRACE_ENABLED())
+        {
+            auto& os = *LogSingleton::GetInstance().GetTraceOS();
+            Print(os, 1);
+        }    
+                    
         const int local_comm_rank = plan->get_local_comm_rank();
 
         // MPI takes ints for everything, convert our size_t elements to int bytes
@@ -1050,6 +1063,22 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
     os << indentStr << "CommAllToAll " << precision_name(precision) << " "
        << PrintArrayType(arrayType) << (uniform_counts ? " (MPI_Ialltoall)" : " (MPI_Ialltoallv)")
        << ":\n";
+
+    int this_rank = -1, comm_size = -1;
+    MPI_Comm_rank(comm, &this_rank);
+    MPI_Comm_size(comm, &comm_size);
+
+    os << indentStr << " MPI_Comm: " << comm << ", rank " << this_rank
+       << "/" << comm_size << "\n";
+
+    // Optional: could show full communicator group ranks (useful for debugging)
+    std::vector<int> ranks_in_comm(comm_size);
+    for(int i = 0; i < comm_size; ++i)
+        ranks_in_comm[i] = i;
+    os << indentStr << " ranks in this communicator: ";
+    for(auto r : ranks_in_comm)
+        os << r << " ";
+    os << "\n";
 
     if(uniform_counts)
     {
