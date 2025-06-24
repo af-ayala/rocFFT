@@ -198,8 +198,9 @@ def run(bench,
             match = line[len(matchTag):]
 
     if proc.returncode == 0:
-        for m in re.finditer('Execution time: ([ 0-9.]*) ms', cout,
-                             re.MULTILINE):
+        for m in re.finditer(
+                '(?:Max rank time|Execution time):\s*([0-9. ]+)\s*ms', cout,
+                re.MULTILINE):
             times.append(list(map(float, m.group(1).split(' '))))
     else:
         logging.info("PROCESS FAILED with return code " + str(proc.returncode))
