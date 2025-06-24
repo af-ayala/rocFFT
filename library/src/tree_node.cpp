@@ -784,7 +784,7 @@ void CommGather::ExecuteAsync(const rocfft_plan     plan,
                               size_t                multiPlanIdx)
 {
 
-    std::cout << "Using CommScatter " << std::enld; 
+    std::cout << "Using CommScatter " << std::endl; 
 
     if(LOG_PLAN_ENABLED())
     {
