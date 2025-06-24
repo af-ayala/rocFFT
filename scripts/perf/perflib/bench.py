@@ -199,7 +199,7 @@ def run(bench,
 
     if proc.returncode == 0:
         for m in re.finditer(
-                '(?:Max rank time|Execution time):\s*([0-9. ]+)\s*ms', cout,
+                '(?:Max rank time|Execution gpu time):\s*([0-9. ]+)\s*ms', cout,
                 re.MULTILINE):
             times.append(list(map(float, m.group(1).split(' '))))
     else:
