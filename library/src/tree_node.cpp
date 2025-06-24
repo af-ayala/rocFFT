@@ -535,6 +535,8 @@ void CommPointToPoint::ExecuteAsync(const rocfft_plan     plan,
                                     rocfft_execution_info info,
                                     size_t                multiPlanIdx)
 {
+    std::cout << "Using CommPointToPoint" << std::endl;
+
     rocfft_scoped_device dev(srcLocation.device);
 
     if(LOG_PLAN_ENABLED())
@@ -748,6 +750,8 @@ void CommScatter::Wait()
 
 void CommScatter::Print(rocfft_ostream& os, const int indent) const
 {
+    std::cout << "Using CommScatter" << std::endl;
+
     std::string indentStr;
     int         i = indent;
     while(i--)
@@ -882,6 +886,7 @@ void CommGather::Wait()
 
 void CommGather::Print(rocfft_ostream& os, const int indent) const
 {
+    std::cout << "Using CommGather" << std::endl;
     std::string indentStr;
     int         i = indent;
     while(i--)
