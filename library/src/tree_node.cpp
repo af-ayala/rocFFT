@@ -1050,17 +1050,13 @@ void CommAllToAll::Wait()
 
 void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
 {
-
-    MPI_Comm comm = plan->desc.mpi_comm;
-    // MPI_Comm comm = plan->desc.use_subcomm ? plan->desc.subcomm : plan->desc.mpi_comm;
-
     std::string indentStr;
     int         i = indent;
     while(i--)
         indentStr += "    ";
 
-    auto printVec = [&os](const char* prefix, const std::vector<size_t>& vec) {
-        os << prefix << ": ";
+    auto printVec = [&os, &indentStr](const char* prefix, const std::vector<size_t>& vec) {
+        os << indentStr << prefix << ": ";
         for(auto val : vec)
             os << val << " ";
         os << "\n";
@@ -1075,36 +1071,36 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
        << PrintArrayType(arrayType) << (uniform_counts ? " (MPI_Ialltoall)" : " (MPI_Ialltoallv)")
        << ":\n";
 
-    int this_rank = -1, comm_size = -1;
-    MPI_Comm_rank(comm, &this_rank);
-    MPI_Comm_size(comm, &comm_size);
+#ifdef ROCFFT_MPI_ENABLE
+    if(comm != MPI_COMM_NULL)
+    {
+        int this_rank = -1, comm_size = -1;
+        MPI_Comm_rank(comm, &this_rank);
+        MPI_Comm_size(comm, &comm_size);
 
-    os << indentStr << " MPI_Comm: " << comm << ", rank " << this_rank
-       << "/" << comm_size << "\n";
+        os << indentStr << " MPI_Comm: " << comm << ", rank " << this_rank
+           << "/" << comm_size << "\n";
 
-    // Optional: could show full communicator group ranks (useful for debugging)
-    std::vector<int> ranks_in_comm(comm_size);
-    for(int i = 0; i < comm_size; ++i)
-        ranks_in_comm[i] = i;
-    os << indentStr << " ranks in this communicator: ";
-    for(auto r : ranks_in_comm)
-        os << r << " ";
-    os << "\n";
+        os << indentStr << " ranks in this communicator: ";
+        for(int i = 0; i < comm_size; ++i)
+            os << i << " ";
+        os << "\n";
+    }
+#endif
 
     if(uniform_counts)
     {
-        // alltoall: just print the count once
         os << indentStr << " count_per_rank: " << sendCounts[0] << "\n";
     }
     else
     {
-        // alltoallv: print full arrays
         printVec("sendOffsets", sendOffsets);
         printVec("sendCounts", sendCounts);
         printVec("recvOffsets", recvOffsets);
         printVec("recvCounts", recvCounts);
     }
 }
+
 
 void ExecPlan::Print(rocfft_ostream& os, const int indent) const
 {
