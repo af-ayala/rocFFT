@@ -946,11 +946,11 @@ std::cerr << "[Rank " << rank << "] Using communicator " << this->comm << std::e
             log_plan("Using MPI_Ialltoall\n");
 
 
-    if(LOG_TRACE_ENABLED())
-{
+    // if(LOG_TRACE_ENABLED())
+// {
     auto& os = *LogSingleton::GetInstance().GetTraceOS();
     Print(os, 1);
-}                
+// }                
 
 
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
@@ -982,12 +982,12 @@ std::cerr << "[Rank " << rank << "] Using communicator " << this->comm << std::e
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoallv\n");
 
-        if(LOG_TRACE_ENABLED())
-        {
+        // if(LOG_TRACE_ENABLED())
+        // {
             auto& os = *LogSingleton::GetInstance().GetTraceOS();
             Print(os, 1);
-        }    
-                    
+        // }    
+
         const int local_comm_rank = plan->get_local_comm_rank();
 
         // MPI takes ints for everything, convert our size_t elements to int bytes
