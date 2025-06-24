@@ -982,7 +982,7 @@ std::cerr << "[Rank " << rank << "] Using communicator " << this->comm << std::e
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoallv\n");
 
-            if(LOG_TRACE_ENABLED())
+        if(LOG_TRACE_ENABLED())
         {
             auto& os = *LogSingleton::GetInstance().GetTraceOS();
             Print(os, 1);
