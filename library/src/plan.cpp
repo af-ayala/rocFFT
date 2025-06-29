@@ -1471,17 +1471,32 @@ std::vector<size_t> rocfft_plan_t::ScatterFieldToBricks(rocfft_location_t       
                                                         size_t                     elem_size)
 {
 
+    std::cerr << "[DEBUG] Brick size: " << bricks[0].count_elems() << "\n";
+for(size_t i = 0; i < bricks.size(); ++i)
+    std::cerr << "[DEBUG] Brick[" << i << "] size: " << bricks[i].count_elems() << "\n";
+
+size_t first_elem = bricks[0].count_elems();
+bool can_use_alltoall = std::all_of(bricks.begin(), bricks.end(), [&](const auto& b) {
+    return b.count_elems() == first_elem;
+});
+
+
+
+
 // bool is_uniform = all_counts_equal(sendCounts) && all_counts_equal(recvCounts);
 // bool is_dense = all_ranks_participate(sendCounts); // No zeros
 
-// if(is_uniform && is_dense)
-// {
-//     // Use CommAllToAll with subcomm
-// }
-// else
-// {
-//     // Use CommScatter
-// }
+// if(can_use_alltoall && is_dense)
+if(can_use_alltoall)
+{
+    std::cout << "can use alltoall " << std::endl;
+    // Use CommAllToAll with subcomm
+}
+else
+{
+    std::cout << "can not use alltoall, using scatter/gather " << std::endl;
+    // Use CommScatter
+}
 
     std::vector<size_t>            outputPlanItems;
     std::vector<TempBufferLease>   scatterPackBufs;
