@@ -1482,7 +1482,6 @@ bool can_use_alltoall = std::all_of(bricks.begin(), bricks.end(), [&](const auto
 
 
 
-
 // bool is_uniform = all_counts_equal(sendCounts) && all_counts_equal(recvCounts);
 // bool is_dense = all_ranks_participate(sendCounts); // No zeros
 
@@ -1526,14 +1525,63 @@ else
         scatterSrc = input;
     }
 
-    // create scatter operation
+    // // create scatter operation
+    // auto scatterPtr
+    //     = std::make_unique<CommScatter>(precision, arrayType, currentLocation, scatterSrc);
+    // auto scatter         = scatterPtr.get();
+    // scatter->description = "Scatter " + std::to_string(bricks.size()) + " bricks";
+
+    // // add scatter to the multi-plan first, add operations afterwards
+    // auto scatterIdx = AddMultiPlanItem(std::move(scatterPtr), antecedents);
+
+MultiPlanItem* comm = nullptr;
+int commIdx = -1;
+
+if(can_use_alltoall)
+{
+    std::cerr << "[INFO] Using CommAllToAll (subcomm candidate)\n";
+
+    const size_t num_ranks = bricks.size();
+    const size_t count = bricks[0].count_elems();
+
+    std::vector<size_t> sendOffsets(num_ranks, 0);
+    std::vector<size_t> sendCounts(num_ranks, count);
+    std::vector<size_t> recvOffsets(num_ranks, 0);
+    std::vector<size_t> recvCounts(num_ranks, count);
+
+    for(size_t i = 0; i < num_ranks; ++i)
+    {
+        sendOffsets[i] = i * count;
+        recvOffsets[i] = i * count;
+    }
+
+    auto alltoallPtr = std::make_unique<CommAllToAll>(
+        precision,
+        arrayType,
+        sendOffsets,
+        sendCounts,
+        recvOffsets,
+        recvCounts,
+        scatterSrc,
+        outputBufs[0]);
+
+    alltoallPtr->description = "AllToAll (replaces scatter)";
+    comm = alltoallPtr.get();
+    commIdx = AddMultiPlanItem(std::move(alltoallPtr), antecedents);
+}
+else
+{
     auto scatterPtr
         = std::make_unique<CommScatter>(precision, arrayType, currentLocation, scatterSrc);
-    auto scatter         = scatterPtr.get();
-    scatter->description = "Scatter " + std::to_string(bricks.size()) + " bricks";
+    scatterPtr->description = "Scatter " + std::to_string(bricks.size()) + " bricks";
+    comm = scatterPtr.get();
+    commIdx = AddMultiPlanItem(std::move(scatterPtr), antecedents);
+}
 
-    // add scatter to the multi-plan first, add operations afterwards
-    auto scatterIdx = AddMultiPlanItem(std::move(scatterPtr), antecedents);
+
+
+
+
 
     // we'll be packing the brick data contiguously into the output,
     // so keep track of how much of the output we've filled up
@@ -1546,7 +1594,7 @@ else
         if(brick.is_contiguous_in_field(field_length, field_stride))
         {
             // contiguous brick, just copy the data
-            scatter->AddOperation(
+            comm->AddOperation(
                 local_comm_rank,
                 {brick.location, outputBufs[brickIdx], scatterOffset, 0, brick.count_elems()});
         }
@@ -1569,13 +1617,13 @@ else
                                                             brick.contiguous_strides(),
                                                             std::move(description)),
                                             antecedents);
-            AddAntecedent(scatterIdx, packIdx);
+            AddAntecedent(commIdx, packIdx);
 
             // Bricks are packed to be contiguous - if output is the
             // same shape, then there's no need for unpacking
             if(brick.is_contiguous())
             {
-                scatter->AddOperation(
+                comm->AddOperation(
                     local_comm_rank,
                     {brick.location, outputBufs[brickIdx], scatterOffset, 0, brick.count_elems()});
             }
@@ -1586,7 +1634,7 @@ else
                     tempBuffers, local_comm_rank, brick.location, brick.count_elems(), elem_size);
 
                 // send the data
-                scatter->AddOperation(local_comm_rank,
+                comm->AddOperation(local_comm_rank,
                                       {brick.location,
                                        BufferPtr::temp(scatterPackBufs.back().data()),
                                        scatterOffset,
@@ -1609,7 +1657,7 @@ else
                                                      0,
                                                      brick.stride,
                                                      std::move(description)),
-                                     {scatterIdx}));
+                                     {commIdx}));
             }
         }
         scatterOffset += brick.count_elems();
@@ -1619,7 +1667,7 @@ else
     // completing if no unpacking was required
     if(outputPlanItems.empty())
     {
-        outputPlanItems.push_back(scatterIdx);
+        outputPlanItems.push_back(commIdx);
     }
 
     return outputPlanItems;
