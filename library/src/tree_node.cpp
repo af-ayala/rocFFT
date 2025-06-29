@@ -753,8 +753,6 @@ void CommScatter::Wait()
 
 void CommScatter::Print(rocfft_ostream& os, const int indent) const
 {
-    std::cout << "Using CommScatter" << std::endl;
-
     std::string indentStr;
     int         i = indent;
     while(i--)
@@ -784,7 +782,7 @@ void CommGather::ExecuteAsync(const rocfft_plan     plan,
                               size_t                multiPlanIdx)
 {
 
-    std::cout << "Using CommScatter " << std::endl; 
+    std::cout << "Using CommGather " << std::endl; 
 
     if(LOG_PLAN_ENABLED())
     {
@@ -892,7 +890,6 @@ void CommGather::Wait()
 
 void CommGather::Print(rocfft_ostream& os, const int indent) const
 {
-    std::cout << "Using CommGather" << std::endl;
     std::string indentStr;
     int         i = indent;
     while(i--)

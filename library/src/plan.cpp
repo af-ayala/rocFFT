@@ -1431,6 +1431,35 @@ std::vector<size_t> rocfft_plan_t::GatherBricksToField(rocfft_location_t current
     return outputPlanItems;
 }
 
+
+
+
+
+
+
+bool all_counts_equal(const std::vector<size_t>& counts)
+{
+    return std::adjacent_find(counts.begin(), counts.end(),
+                              std::not_equal_to<size_t>()) == counts.end();
+}
+
+
+
+
+bool all_ranks_participate(const std::vector<size_t>& counts)
+{
+    return std::all_of(counts.begin(), counts.end(), [](size_t c) { return c > 0; });
+}
+
+
+
+
+
+
+
+
+
+
 std::vector<size_t> rocfft_plan_t::ScatterFieldToBricks(rocfft_location_t          currentLocation,
                                                         BufferPtr                  input,
                                                         rocfft_precision           precision,
@@ -1441,6 +1470,19 @@ std::vector<size_t> rocfft_plan_t::ScatterFieldToBricks(rocfft_location_t       
                                                         const std::vector<size_t>& antecedents,
                                                         size_t                     elem_size)
 {
+
+bool is_uniform = all_counts_equal(sendCounts) && all_counts_equal(recvCounts);
+bool is_dense = all_ranks_participate(sendCounts); // No zeros
+
+if(is_uniform && is_dense)
+{
+    // Use CommAllToAll with subcomm
+}
+else
+{
+    // Use CommScatter
+}
+
     std::vector<size_t>            outputPlanItems;
     std::vector<TempBufferLease>   scatterPackBufs;
     std::optional<TempBufferLease> scatterSrcBuf;
