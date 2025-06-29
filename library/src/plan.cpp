@@ -1471,17 +1471,17 @@ std::vector<size_t> rocfft_plan_t::ScatterFieldToBricks(rocfft_location_t       
                                                         size_t                     elem_size)
 {
 
-bool is_uniform = all_counts_equal(sendCounts) && all_counts_equal(recvCounts);
-bool is_dense = all_ranks_participate(sendCounts); // No zeros
+// bool is_uniform = all_counts_equal(sendCounts) && all_counts_equal(recvCounts);
+// bool is_dense = all_ranks_participate(sendCounts); // No zeros
 
-if(is_uniform && is_dense)
-{
-    // Use CommAllToAll with subcomm
-}
-else
-{
-    // Use CommScatter
-}
+// if(is_uniform && is_dense)
+// {
+//     // Use CommAllToAll with subcomm
+// }
+// else
+// {
+//     // Use CommScatter
+// }
 
     std::vector<size_t>            outputPlanItems;
     std::vector<TempBufferLease>   scatterPackBufs;
