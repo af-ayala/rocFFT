@@ -51,7 +51,8 @@
 #include <set>
 #include <sstream>
 #include <vector>
-#include <stdlib>
+#include <iostream>
+using namespace std;
 
 #ifdef ROCFFT_MPI_ENABLE
 #include <type_traits>
