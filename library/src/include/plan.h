@@ -139,7 +139,7 @@ struct rocfft_plan_description_t
 
     // hard-coded test
     std::vector<int> imgrid = {16, 8, 1};
-    std::vector<int> omgrid = {16, 8, , 1};
+    std::vector<int> omgrid = {16, 8, 1};
 #endif
 
     LoadOps  loadOps;
