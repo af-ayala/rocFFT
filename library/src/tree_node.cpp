@@ -1086,10 +1086,12 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
 
     if(uniform_counts)
     {
+        // alltoall: just print the count once        
         os << indentStr << " count_per_rank: " << sendCounts[0] << "\n";
     }
     else
     {
+        // alltoallv: print full arrays        
         printVec("sendOffsets", sendOffsets);
         printVec("sendCounts", sendCounts);
         printVec("recvOffsets", recvOffsets);
