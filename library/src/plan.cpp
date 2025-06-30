@@ -2385,7 +2385,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
         int Px = desc.imgrid[0];
         int Py = desc.imgrid[1];
-        int Pz = desc.imgrid.size() > 2 ? desc.imgrid[2] : 1;
 
         int global_rank = get_local_comm_rank();
         int x           = global_rank % Px;
