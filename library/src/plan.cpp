@@ -1583,8 +1583,6 @@ static bool DimensionSplitInField(size_t length, size_t dimIdx, const rocfft_fie
 // execPlan with nodes to implement the FFT.
 void rocfft_plan_t::GatherScatterSingleDevicePlan(std::unique_ptr<ExecPlan>&& execPlanPtr)
 {
-
-
     // The smart pointer will be moved into the multi-plan during this
     // function, so keep a plain non-owning pointer
     auto execPlan = execPlanPtr.get();
@@ -1983,7 +1981,6 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     size_t                     transposeNumber)
 {
 
-
     // All-to-all transpose is preferred as it's faster. This requires
     // that each rank have a single base pointer to send/receive with
     // offsets for every other rank.
@@ -2019,9 +2016,7 @@ void rocfft_plan_t::GlobalTransposeP2P(size_t                     elem_size,
                                        const std::string&         itemGroup)
 {
     std::vector<TempBufferLease> packBufs;
-
-
-    const auto local_comm_rank = get_local_comm_rank();
+    const auto                   local_comm_rank = get_local_comm_rank();
 
     // loop over each input brick, finding the intersection of it with
     // every output brick
@@ -2297,6 +2292,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     outputItems = unpack_ops;
 }
 
+// check whether the input and output fields can be used for pencil decomposition
 static bool is_uniform_pencil(const rocfft_field_t& inField, const rocfft_field_t& outField)
 {
     if(inField.bricks.size() != outField.bricks.size() || inField.bricks.empty())
@@ -2323,14 +2319,14 @@ rocfft_field_t create_intermediate_field(const rocfft_plan_description_t& desc, 
 
     for(size_t i = 0; i < srcField.bricks.size(); ++i)
     {
-        const auto& brick = srcField.bricks[i];
+        const auto&    brick = srcField.bricks[i];
         rocfft_brick_t newBrick;
 
-        newBrick.lower = brick.lower;
-        newBrick.upper = brick.upper;
+        newBrick.lower    = brick.lower;
+        newBrick.upper    = brick.upper;
         newBrick.location = brick.location;
 
-        auto len = brick.length();
+        auto                len = brick.length();
         std::vector<size_t> perm(len.size());
         std::iota(perm.begin(), perm.end(), 0);
 
@@ -2339,7 +2335,7 @@ rocfft_field_t create_intermediate_field(const rocfft_plan_description_t& desc, 
 
         // Compute strides so that alignedDim is the fastest
         std::vector<size_t> strides(len.size());
-        size_t s = 1;
+        size_t              s = 1;
         for(size_t j = 0; j < perm.size(); ++j)
         {
             strides[perm[j]] = s;
@@ -2424,23 +2420,19 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         std::vector<size_t> midItems2;
         std::vector<size_t> outputItems;
 
-auto MakeTempBufferCtor = [](const std::vector<rocfft_brick_t>& bricks)
-{
-    return [](size_t userIdx, int comm_rank)
-    {
-        return BufferPtr::temp(std::make_shared<InternalTempBuffer>(comm_rank));
-    };
-};
+        auto MakeTempBufferCtor = [](const std::vector<rocfft_brick_t>& bricks) {
+            return [](size_t userIdx, int comm_rank) {
+                return BufferPtr::temp(std::make_shared<InternalTempBuffer>(comm_rank));
+            };
+        };
 
         // first set of local FFTs along X
         C2CField(desc.inFields.front(), {0}, inputBufs, inputBufs, {}, inputItems);
 
         // transpose X -> Y
         rocfft_field_t         tmpYField = create_intermediate_field(desc, 1); // align along Y
-        // std::vector<BufferPtr> tmpYBufs  = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
-
-// std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
-std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(MakeTempBufferCtor(tmpYField.bricks), tmpYField.bricks);
+        std::vector<BufferPtr> tmpYBufs
+            = GatherUserBuffers(MakeTempBufferCtor(tmpYField.bricks), tmpYField.bricks);
 
         GlobalTransposeA2A(elem_size,
                            desc.inFields.front(),
@@ -2455,9 +2447,10 @@ std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(MakeTempBufferCtor(tmpYField
         C2CField(tmpYField, {1}, tmpYBufs, tmpYBufs, midItems1, midItems2);
 
         // transpose Y -> Z
-        rocfft_field_t         tmpZField = create_intermediate_field(desc, 2); // align along Z
+        rocfft_field_t tmpZField = create_intermediate_field(desc, 2); // align along Z
         // std::vector<BufferPtr> tmpZBufs  = GatherUserBuffers(BufferPtr::temp, tmpZField.bricks);
-std::vector<BufferPtr> tmpZBufs = GatherUserBuffers(MakeTempBufferCtor(tmpZField.bricks), tmpZField.bricks);
+        std::vector<BufferPtr> tmpZBufs
+            = GatherUserBuffers(MakeTempBufferCtor(tmpZField.bricks), tmpZField.bricks);
 
         desc.subcomm.split(desc.mpi_comm, z, y); // group by Z
 
@@ -3125,7 +3118,6 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
                 // If optimized multi-device was not possible (either because
                 // multi-device was not requested, or we can't optimize for
                 // that case), fall back to single-device plan
-
 
                 NodeMetaData rootPlanData(nullptr);
                 set_rootplan_params(plan, rootPlanData);

@@ -842,7 +842,7 @@ public:
         : comm_rank(comm_rank)
     {
     }
-    InternalTempBuffer(const InternalTempBuffer&) = delete;
+    InternalTempBuffer(const InternalTempBuffer&)            = delete;
     InternalTempBuffer& operator=(const InternalTempBuffer&) = delete;
     ~InternalTempBuffer()                                    = default;
 
@@ -898,8 +898,8 @@ private:
 class BufferPtr
 {
 public:
-    BufferPtr()                 = default;
-    BufferPtr(const BufferPtr&) = default;
+    BufferPtr()                            = default;
+    BufferPtr(const BufferPtr&)            = default;
     BufferPtr& operator=(const BufferPtr&) = default;
     ~BufferPtr()                           = default;
 
@@ -1026,7 +1026,7 @@ struct MultiPlanItem
 {
     MultiPlanItem();
     virtual ~MultiPlanItem();
-    MultiPlanItem(const MultiPlanItem&) = delete;
+    MultiPlanItem(const MultiPlanItem&)            = delete;
     MultiPlanItem& operator=(const MultiPlanItem&) = delete;
 
     // multi-process requests
@@ -1450,8 +1450,8 @@ private:
     const BufferPtr sendBuf;
     const BufferPtr recvBuf;
 
-// set during ExecuteAsync, used in Print 
-mutable MPI_Comm comm = MPI_COMM_NULL;    
+    // set during ExecuteAsync, used in Print
+    mutable MPI_Comm comm = MPI_COMM_NULL;
 };
 
 // Tree-structured FFT plan.  This is specific to a single device on
