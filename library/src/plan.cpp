@@ -2431,9 +2431,12 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         std::vector<size_t> midItems2;
         std::vector<size_t> outputItems;
 
-return [](size_t userIdx, int comm_rank)
+auto MakeTempBufferCtor = [](const std::vector<rocfft_brick_t>& bricks)
 {
-    return BufferPtr::temp(std::make_shared<InternalTempBuffer>(comm_rank));
+    return [](size_t userIdx, int comm_rank)
+    {
+        return BufferPtr::temp(std::make_shared<InternalTempBuffer>(comm_rank));
+    };
 };
 
         // first set of local FFTs along X
