@@ -2431,6 +2431,15 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         std::vector<size_t> midItems2;
         std::vector<size_t> outputItems;
 
+auto MakeTempBufferCtor = [](const std::vector<rocfft_brick_t>& bricks)
+{
+    return [&bricks](size_t userIdx)
+    {
+        int comm_rank = bricks[userIdx].location.comm_rank;
+        return BufferPtr::temp(std::make_shared<InternalTempBuffer>(comm_rank));
+    };
+};
+
         // first set of local FFTs along X
         C2CField(desc.inFields.front(), {0}, inputBufs, inputBufs, {}, inputItems);
 
@@ -2438,7 +2447,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         rocfft_field_t         tmpYField = create_intermediate_field(desc, 1); // align along Y
         // std::vector<BufferPtr> tmpYBufs  = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
 
-std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
+// std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
+std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(MakeTempBufferCtor(tmpYField.bricks), tmpYField.bricks);
 
         GlobalTransposeA2A(elem_size,
                            desc.inFields.front(),
@@ -2454,7 +2464,8 @@ std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(BufferPtr::temp, tmpYField.b
 
         // transpose Y -> Z
         rocfft_field_t         tmpZField = create_intermediate_field(desc, 2); // align along Z
-        std::vector<BufferPtr> tmpZBufs  = GatherUserBuffers(BufferPtr::temp, tmpZField.bricks);
+        // std::vector<BufferPtr> tmpZBufs  = GatherUserBuffers(BufferPtr::temp, tmpZField.bricks);
+std::vector<BufferPtr> tmpZBufs = GatherUserBuffers(MakeTempBufferCtor(tmpZField.bricks), tmpZField.bricks);
 
         desc.subcomm.split(desc.mpi_comm, z, y); // group by Z
 
