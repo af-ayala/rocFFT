@@ -28,6 +28,8 @@
 #include <memory>
 #include <set>
 #include <vector>
+#include <iostream>
+using namespace std;
 
 #include "../../../shared/gpubuf.h"
 #include "../../../shared/hip_object_wrapper.h"
