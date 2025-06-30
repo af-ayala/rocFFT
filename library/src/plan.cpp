@@ -1341,6 +1341,7 @@ std::vector<size_t> rocfft_plan_t::GatherBricksToField(rocfft_location_t current
     gather->description = "Gather " + std::to_string(bricks.size()) + " bricks";
 
     // Add gather to the plan first - we will add operations to it later
+    std::cout << "adding GatherBricksToField" << std::endl;
     size_t gatherIdx = AddMultiPlanItem(std::move(gatherPtr), antecedents);
 
     // We'll be packing the brick data contiguously into the output,
@@ -1388,6 +1389,8 @@ std::vector<size_t> rocfft_plan_t::GatherBricksToField(rocfft_location_t current
                                                    brick.contiguous_strides(),
                                                    std::move(description)),
                                    antecedents);
+            std::cout << "adding pack" << std::endl;
+
             AddAntecedent(gatherIdx, packIdx);
 
             gather->AddOperation(local_comm_rank,
@@ -1419,6 +1422,7 @@ std::vector<size_t> rocfft_plan_t::GatherBricksToField(rocfft_location_t current
                                                  field_stride,
                                                  std::move(description)),
                                  {gatherIdx}));
+            std::cout << "adding unpack" << std::endl;
         }
 
         packOffset += brick.count_elems();
