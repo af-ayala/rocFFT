@@ -2414,7 +2414,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
         // transpose X -> Y
 
-        rocfft_field_t tmpYField = CreateIntermediateFieldAlignedTo(desc, 1); // align along Y
+        rocfft_field_t tmpYField = create_intermediate_field(desc, 1); // align along Y
         std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
 
         GlobalTransposeA2A(elem_size,
@@ -2430,7 +2430,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         C2CField(tmpYField, {1}, tmpYBufs, tmpYBufs, midItems1, midItems2);
 
         // === Transpose Y -> Z ===
-        rocfft_field_t tmpZField = CreateIntermediateFieldAlignedTo(desc, 2); // align along Z
+        rocfft_field_t tmpZField = create_intermediate_field(desc, 2); // align along Z
         std::vector<BufferPtr> tmpZBufs = GatherUserBuffers(BufferPtr::temp, tmpZField.bricks);
 
         desc.subcomm.split(desc.mpi_comm, z, y); // group by Z
