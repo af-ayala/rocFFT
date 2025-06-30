@@ -926,7 +926,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     int sub_rank = -1, sub_size = -1;
     MPI_Comm_rank(this->comm, &sub_rank);
     MPI_Comm_size(this->comm, &sub_size);
-    std::cerr << "ALAN NEW [Rank " << sub_rank << "] Using communicator " << this->comm
+    std::cerr << "[Rank " << sub_rank << "] Using communicator " << this->comm
               << " of size " << sub_size << std::endl;
 
     int rank;
