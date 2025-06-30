@@ -2424,7 +2424,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                            tmpYBufs,
                            inputItems,
                            midItems1,
-                           transposeNumber++);
+                           "transpose_" + std::to_string(transposeNumber++));
 
         // second set of local FFTs along Y
         C2CField(tmpYField, {1}, tmpYBufs, tmpYBufs, midItems1, midItems2);
@@ -2442,7 +2442,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                            tmpZBufs,
                            midItems2,
                            midItems1,
-                           transposeNumber++);
+                           "transpose_" + std::to_string(transposeNumber++));
 
         // third set of local FFTs along Y
         C2CField(tmpZField, {2}, tmpZBufs, outputBufs, midItems1, outputItems);
