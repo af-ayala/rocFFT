@@ -2015,7 +2015,7 @@ void rocfft_plan_t::GlobalTransposeP2P(size_t                     elem_size,
 {
     std::vector<TempBufferLease> packBufs;
 
-    std::cout << "called global transpose P2P " << std::endl;
+    std::cout << "called rocfft_plan_t::GlobalTransposeP2P" << std::endl;
 
     const auto local_comm_rank = get_local_comm_rank();
 
@@ -2114,6 +2114,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                        std::vector<size_t>&       outputItems,
                                        const std::string&         itemGroup)
 {
+    std::cout << "called rocfft_plan_t::GlobalTransposeA2A" << std::endl;
     const auto local_comm_rank = get_local_comm_rank();
     const auto local_comm_size = get_local_comm_size();
 
