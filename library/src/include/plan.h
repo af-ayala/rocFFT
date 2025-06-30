@@ -136,6 +136,9 @@ struct rocfft_plan_description_t
     MPI_Comm_wrapper_t mpi_comm;
     bool use_subcomm = false;
     MPI_Comm_wrapper_t subcomm;
+
+    std::vector<int> imgrid = {2,2,1};
+    std::vector<int> omgrid = {2,2,1};
 #endif
 
     LoadOps  loadOps;

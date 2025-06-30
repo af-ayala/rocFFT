@@ -2402,7 +2402,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                            outputBufs,
                            inputItems,
                            midItems,
-                           transposeNumber);
+                           0);
 
         // second set of local FFTs
         C2CField(desc.outFields.front(), {1}, outputBufs, outputBufs, midItems, outputItems);
