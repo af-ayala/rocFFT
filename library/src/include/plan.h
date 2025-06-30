@@ -1,4 +1,4 @@
-// Copyright (C) 2016 - 2023 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2016 - 2025 Advanced Micro Devices, Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -134,6 +134,12 @@ struct rocfft_plan_description_t
     rocfft_comm_type comm_type = rocfft_comm_none;
 #ifdef ROCFFT_MPI_ENABLE
     MPI_Comm_wrapper_t mpi_comm;
+    bool               use_subcomm = false;
+    MPI_Comm_wrapper_t subcomm;
+
+    // hard-coded test
+    std::vector<int> imgrid = {16, 8, 1};
+    std::vector<int> omgrid = {16, 8, 1};
 #endif
 
     LoadOps  loadOps;

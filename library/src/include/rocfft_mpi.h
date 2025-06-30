@@ -1,4 +1,4 @@
-// Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2024-2025 Advanced Micro Devices, Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -92,6 +92,16 @@ public:
     bool operator!() const
     {
         return mpi_comm == MPI_COMM_NULL;
+    }
+
+    // split communicator
+    void split(MPI_Comm parent, int group, int key)
+    {
+        free(); // release any old communicator
+        if(parent != MPI_COMM_NULL && MPI_Comm_split(parent, group, key, &mpi_comm) != MPI_SUCCESS)
+        {
+            throw std::runtime_error("MPI_Comm_split failed");
+        }
     }
 
 private:

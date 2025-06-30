@@ -535,6 +535,8 @@ void CommPointToPoint::ExecuteAsync(const rocfft_plan     plan,
                                     rocfft_execution_info info,
                                     size_t                multiPlanIdx)
 {
+    std::cout << "Using CommPointToPoint" << std::endl;
+
     rocfft_scoped_device dev(srcLocation.device);
 
     if(LOG_PLAN_ENABLED())
@@ -650,6 +652,8 @@ void CommScatter::ExecuteAsync(const rocfft_plan     plan,
 {
     rocfft_scoped_device dev(srcLocation.device);
 
+    std::cout << "Using CommScatter" << std::endl;
+
     if(LOG_PLAN_ENABLED())
     {
         log_plan("CommScatter\n");
@@ -667,8 +671,10 @@ void CommScatter::ExecuteAsync(const rocfft_plan     plan,
                                          arrayType);
 
         hipError_t err = hipSuccess;
+
         if(op.destLocation.comm_rank == srcLocation.comm_rank)
         {
+            // intra-process communication
             const auto memSize = op.numElems * element_size(precision, arrayType);
             if(local_comm_rank == op.destLocation.comm_rank)
             {
@@ -776,6 +782,9 @@ void CommGather::ExecuteAsync(const rocfft_plan     plan,
                               rocfft_execution_info info,
                               size_t                multiPlanIdx)
 {
+
+    std::cout << "Using CommGather " << std::endl;
+
     if(LOG_PLAN_ENABLED())
     {
         log_plan("CommGather\n");
@@ -912,6 +921,18 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 {
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
+    this->comm = plan->desc.use_subcomm ? plan->desc.subcomm : plan->desc.mpi_comm;
+
+    int sub_rank = -1, sub_size = -1;
+    MPI_Comm_rank(this->comm, &sub_rank);
+    MPI_Comm_size(this->comm, &sub_size);
+    std::cerr << "[Rank " << sub_rank << "] Using communicator " << this->comm
+              << " of size " << sub_size << std::endl;
+
+    int rank;
+    MPI_Comm_rank(this->comm, &rank);
+    std::cerr << "[Rank " << rank << "] Using communicator " << this->comm << std::endl;
+
     const size_t num_ranks = plan->get_local_comm_size();
     if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
        || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
@@ -947,7 +968,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                           recvBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
                                           MPI_CHAR,
-                                          plan->desc.mpi_comm,
+                                          this->comm,
                                           &request);
 
         if(mpiret != MPI_SUCCESS)
@@ -993,7 +1014,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                            intRecvCounts.data(),
                                            intRecvOffsets.data(),
                                            rocfft_type_to_mpi_type(precision, arrayType),
-                                           plan->desc.mpi_comm,
+                                           this->comm,
                                            &request);
 
         if(mpiret != MPI_SUCCESS)
@@ -1035,8 +1056,8 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
     while(i--)
         indentStr += "    ";
 
-    auto printVec = [&os](const char* prefix, const std::vector<size_t>& vec) {
-        os << prefix << ": ";
+    auto printVec = [&os, &indentStr](const char* prefix, const std::vector<size_t>& vec) {
+        os << indentStr << prefix << ": ";
         for(auto val : vec)
             os << val << " ";
         os << "\n";
@@ -1050,6 +1071,23 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
     os << indentStr << "CommAllToAll " << precision_name(precision) << " "
        << PrintArrayType(arrayType) << (uniform_counts ? " (MPI_Ialltoall)" : " (MPI_Ialltoallv)")
        << ":\n";
+
+#ifdef ROCFFT_MPI_ENABLE
+    if(comm != MPI_COMM_NULL)
+    {
+        int this_rank = -1, comm_size = -1;
+        MPI_Comm_rank(comm, &this_rank);
+        MPI_Comm_size(comm, &comm_size);
+
+        os << indentStr << " MPI_Comm: " << comm << ", rank " << this_rank << "/" << comm_size
+           << "\n";
+
+        os << indentStr << " ranks in this communicator: ";
+        for(int i = 0; i < comm_size; ++i)
+            os << i << " ";
+        os << "\n";
+    }
+#endif
 
     if(uniform_counts)
     {
