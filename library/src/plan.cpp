@@ -44,6 +44,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <functional>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -51,7 +52,6 @@
 #include <set>
 #include <sstream>
 #include <vector>
-#include <iostream>
 using namespace std;
 
 #ifdef ROCFFT_MPI_ENABLE
@@ -1201,7 +1201,7 @@ struct TempBufferLease
         buf         = std::move(other.buf);
         return *this;
     }
-    TempBufferLease(const TempBufferLease& other) = delete;
+    TempBufferLease(const TempBufferLease& other)            = delete;
     TempBufferLease& operator=(const TempBufferLease& other) = delete;
 
     std::shared_ptr<InternalTempBuffer> data()
@@ -1585,7 +1585,7 @@ static bool DimensionSplitInField(size_t length, size_t dimIdx, const rocfft_fie
 // execPlan with nodes to implement the FFT.
 void rocfft_plan_t::GatherScatterSingleDevicePlan(std::unique_ptr<ExecPlan>&& execPlanPtr)
 {
-    
+
     std::cout << "GatherScatterSingleDevicePlan" << std::endl;
 
     // The smart pointer will be moved into the multi-plan during this
@@ -2311,13 +2311,31 @@ static bool is_uniform_pencil(const rocfft_field_t& inField, const rocfft_field_
     size_t count = inField.bricks[0].count_elems();
     for(size_t i = 0; i < inField.bricks.size(); ++i)
     {
-        if(inField.bricks[i].count_elems() != count ||
-           outField.bricks[i].count_elems() != count)
+        if(inField.bricks[i].count_elems() != count || outField.bricks[i].count_elems() != count)
         {
             return false;
         }
     }
     return true;
+}
+
+// create an intermediate field aligned along a given dimension
+rocfft_field_t create_intermediate_field(const rocfft_plan_description_t& desc, int dim)
+{
+    rocfft_field_t newField;
+    const auto&    srcField = desc.inFields.front();
+
+    newField.bricks.resize(srcField.bricks.size());
+    for(size_t i = 0; i < srcField.bricks.size(); ++i)
+    {
+        const auto&         brick    = srcField.bricks[i];
+        rocfft_brick_info_t newBrick = brick;
+
+        // this may need to permute strides/dims
+        newField.bricks[i] = newBrick;
+    }
+
+    return newField;
 }
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
@@ -2359,8 +2377,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     if(contiguousInputDims.empty() || contiguousOutputDims.empty())
         return false;
 
-    // enable pencil decomposition
-    // create OptMultiDevicePlan using CommAllToAll with subcommunicator
+    // enable pencil decomposition:
+    // create OptMultiDevicePlan using CommAllToAll with subcommunicators
     if(is_uniform_pencil(desc.inFields.front(), desc.outFields.front()))
     {
         std::cout << "[INFO] Using distributed pencil plan with subcommunicator\n";
@@ -2370,47 +2388,69 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         int Pz = desc.imgrid.size() > 2 ? desc.imgrid[2] : 1;
 
         int global_rank = get_local_comm_rank();
-        int x = global_rank % Px;
-        int y = (global_rank / Px) % Py;
-        int z = global_rank / (Px * Py);
+        int x           = global_rank % Px;
+        int y           = (global_rank / Px) % Py;
+        int z           = global_rank / (Px * Py);
 
-        int group = y;   // group by fixed Y for X->Y transpose
-        int key   = x;   // preserve X-order
+        int group = y; // group by fixed Y for X->Y transpose
+        int key   = x; // preserve X-order
 
         desc.use_subcomm = true;
         desc.subcomm.split(desc.mpi_comm, group, key);
 
         const auto elem_size = element_size(precision, desc.inArrayType);
 
-        std::vector<BufferPtr> inputBufs =
-            GatherUserBuffers(BufferPtr::user_input, desc.inFields.front().bricks);
-        std::vector<BufferPtr> outputBufs =
-            GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
+        std::vector<BufferPtr> inputBufs
+            = GatherUserBuffers(BufferPtr::user_input, desc.inFields.front().bricks);
+        std::vector<BufferPtr> outputBufs
+            = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
 
         std::vector<size_t> inputItems;
         std::vector<size_t> midItems;
         std::vector<size_t> outputItems;
 
-        // first set of local FFTs
+        // first set of local FFTs along X
         C2CField(desc.inFields.front(), {0}, inputBufs, inputBufs, {}, inputItems);
 
-        // intermediate transpose
+        // transpose X -> Y
+
+        rocfft_field_t tmpYField = CreateIntermediateFieldAlignedTo(desc, 1); // align along Y
+        std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
+
         GlobalTransposeA2A(elem_size,
                            desc.inFields.front(),
-                           desc.outFields.front(),
+                           tmpYField,
                            inputBufs,
-                           outputBufs,
+                           tmpYBufs,
                            inputItems,
-                           midItems,
-                           0);
+                           midItems1,
+                           transposeNumber++);
 
-        // second set of local FFTs
-        C2CField(desc.outFields.front(), {1}, outputBufs, outputBufs, midItems, outputItems);
+        // second set of local FFTs along Y
+        C2CField(tmpYField, {1}, tmpYBufs, tmpYBufs, midItems1, midItems2);
+
+        // === Transpose Y -> Z ===
+        rocfft_field_t tmpZField = CreateIntermediateFieldAlignedTo(desc, 2); // align along Z
+        std::vector<BufferPtr> tmpZBufs = GatherUserBuffers(BufferPtr::temp, tmpZField.bricks);
+
+        desc.subcomm.split(desc.mpi_comm, z, y); // group by Z
+
+        GlobalTransposeA2A(elem_size,
+                           tmpYField,
+                           tmpZField,
+                           tmpYBufs,
+                           tmpZBufs,
+                           midItems2,
+                           midItems1,
+                           transposeNumber++);
+
+        // third set of local FFTs along Y
+        C2CField(tmpZField, {2}, tmpZBufs, outputBufs, midItems1, outputItems);
 
         return true;
     }
 
-    // default slab depcomposition logic
+    // default slab depcomposition logic:
     // transform contiguous input dims
     const auto elem_size = element_size(precision, desc.inArrayType);
 
