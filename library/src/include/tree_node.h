@@ -1459,6 +1459,8 @@ mutable MPI_Comm comm = MPI_COMM_NULL;
 // memory allocated for things like kernel arguments and twiddles.
 struct ExecPlan : public MultiPlanItem
 {
+
+    std::cout << " called execplan " << std::endl;
     ExecPlan(int local_comm_rank, bool _mgpuPlan, rocfft_location_t _location)
         : location(_location)
         , mgpuPlan(_mgpuPlan)
