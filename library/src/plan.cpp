@@ -2330,10 +2330,10 @@ rocfft_field_t create_intermediate_field(const rocfft_plan_description_t& desc, 
         std::vector<size_t> perm(len.size());
         std::iota(perm.begin(), perm.end(), 0);
 
-        // Move alignedDim to the front
+        // move alignedDim to the front
         std::rotate(perm.begin(), perm.begin() + alignedDim, perm.begin() + alignedDim + 1);
 
-        // Compute strides so that alignedDim is the fastest
+        // compute strides so that alignedDim is the fastest
         std::vector<size_t> strides(len.size());
         size_t              s = 1;
         for(size_t j = 0; j < perm.size(); ++j)
