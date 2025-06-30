@@ -2406,7 +2406,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
 
         std::vector<size_t> inputItems;
-        std::vector<size_t> midItems;
         std::vector<size_t> midItems1;
         std::vector<size_t> midItems2;
         std::vector<size_t> outputItems;
