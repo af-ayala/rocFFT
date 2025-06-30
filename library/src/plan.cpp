@@ -2328,8 +2328,8 @@ rocfft_field_t create_intermediate_field(const rocfft_plan_description_t& desc, 
     newField.bricks.resize(srcField.bricks.size());
     for(size_t i = 0; i < srcField.bricks.size(); ++i)
     {
-        const auto&         brick    = srcField.bricks[i];
-        rocfft_brick_info_t newBrick = brick;
+        const auto&    brick    = srcField.bricks[i];
+        rocfft_brick_t newBrick = brick;
 
         // this may need to permute strides/dims
         newField.bricks[i] = newBrick;
@@ -2405,6 +2405,10 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         std::vector<BufferPtr> outputBufs
             = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
 
+        std::vector<size_t> midItems1;
+        std::vector<size_t> midItems2;
+        std::vector<size_t> outputItems;
+
         std::vector<size_t> inputItems;
         std::vector<size_t> midItems;
         std::vector<size_t> outputItems;
@@ -2413,9 +2417,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         C2CField(desc.inFields.front(), {0}, inputBufs, inputBufs, {}, inputItems);
 
         // transpose X -> Y
-
-        rocfft_field_t tmpYField = create_intermediate_field(desc, 1); // align along Y
-        std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
+        rocfft_field_t         tmpYField = create_intermediate_field(desc, 1); // align along Y
+        std::vector<BufferPtr> tmpYBufs  = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
 
         GlobalTransposeA2A(elem_size,
                            desc.inFields.front(),
@@ -2429,9 +2432,9 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         // second set of local FFTs along Y
         C2CField(tmpYField, {1}, tmpYBufs, tmpYBufs, midItems1, midItems2);
 
-        // === Transpose Y -> Z ===
-        rocfft_field_t tmpZField = create_intermediate_field(desc, 2); // align along Z
-        std::vector<BufferPtr> tmpZBufs = GatherUserBuffers(BufferPtr::temp, tmpZField.bricks);
+        // transpose Y -> Z
+        rocfft_field_t         tmpZField = create_intermediate_field(desc, 2); // align along Z
+        std::vector<BufferPtr> tmpZBufs  = GatherUserBuffers(BufferPtr::temp, tmpZField.bricks);
 
         desc.subcomm.split(desc.mpi_comm, z, y); // group by Z
 
