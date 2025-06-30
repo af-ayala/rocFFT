@@ -654,7 +654,6 @@ void CommScatter::ExecuteAsync(const rocfft_plan     plan,
 
     std::cout << "Using CommScatter" << std::endl;
 
-
     if(LOG_PLAN_ENABLED())
     {
         log_plan("CommScatter\n");
@@ -672,7 +671,7 @@ void CommScatter::ExecuteAsync(const rocfft_plan     plan,
                                          arrayType);
 
         hipError_t err = hipSuccess;
-        
+
         if(op.destLocation.comm_rank == srcLocation.comm_rank)
         {
             // intra-process communication
@@ -784,7 +783,7 @@ void CommGather::ExecuteAsync(const rocfft_plan     plan,
                               size_t                multiPlanIdx)
 {
 
-    std::cout << "Using CommGather " << std::endl; 
+    std::cout << "Using CommGather " << std::endl;
 
     if(LOG_PLAN_ENABLED())
     {
@@ -924,9 +923,9 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     // we have ranks
     this->comm = plan->desc.mpi_comm;
 
-int rank;
-MPI_Comm_rank(this->comm, &rank);
-std::cerr << "[Rank " << rank << "] Using communicator " << this->comm << std::endl;    
+    int rank;
+    MPI_Comm_rank(this->comm, &rank);
+    std::cerr << "[Rank " << rank << "] Using communicator " << this->comm << std::endl;
 
     const size_t num_ranks = plan->get_local_comm_size();
     if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
@@ -1074,8 +1073,8 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
         MPI_Comm_rank(comm, &this_rank);
         MPI_Comm_size(comm, &comm_size);
 
-        os << indentStr << " MPI_Comm: " << comm << ", rank " << this_rank
-           << "/" << comm_size << "\n";
+        os << indentStr << " MPI_Comm: " << comm << ", rank " << this_rank << "/" << comm_size
+           << "\n";
 
         os << indentStr << " ranks in this communicator: ";
         for(int i = 0; i < comm_size; ++i)
@@ -1086,19 +1085,18 @@ void CommAllToAll::Print(rocfft_ostream& os, const int indent) const
 
     if(uniform_counts)
     {
-        // alltoall: just print the count once        
+        // alltoall: just print the count once
         os << indentStr << " count_per_rank: " << sendCounts[0] << "\n";
     }
     else
     {
-        // alltoallv: print full arrays        
+        // alltoallv: print full arrays
         printVec("sendOffsets", sendOffsets);
         printVec("sendCounts", sendCounts);
         printVec("recvOffsets", recvOffsets);
         printVec("recvCounts", recvCounts);
     }
 }
-
 
 void ExecPlan::Print(rocfft_ostream& os, const int indent) const
 {
