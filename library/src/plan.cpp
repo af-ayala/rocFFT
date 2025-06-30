@@ -2415,7 +2415,13 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
         // transpose X -> Y
         rocfft_field_t         tmpYField = create_intermediate_field(desc, 1); // align along Y
-        std::vector<BufferPtr> tmpYBufs  = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
+        // std::vector<BufferPtr> tmpYBufs  = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
+
+auto temp_ctor = [](size_t userIdx, int comm_rank) {
+    return BufferPtr::temp(std::make_shared<InternalTempBuffer>(comm_rank));
+};
+
+std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(temp_ctor, tmpYField.bricks);        
 
         GlobalTransposeA2A(elem_size,
                            desc.inFields.front(),
