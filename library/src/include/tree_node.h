@@ -28,8 +28,6 @@
 #include <memory>
 #include <set>
 #include <vector>
-#include <iostream>
-using namespace std;
 
 #include "../../../shared/gpubuf.h"
 #include "../../../shared/hip_object_wrapper.h"
@@ -47,7 +45,9 @@ using namespace std;
 #include "rtc_kernel.h"
 #include <hip/hip_runtime_api.h>
 
+#ifdef ROCFFT_MPI_ENABLE
 #include <mpi.h>
+#endif
 
 enum NodeType
 {
@@ -1461,8 +1461,6 @@ mutable MPI_Comm comm = MPI_COMM_NULL;
 // memory allocated for things like kernel arguments and twiddles.
 struct ExecPlan : public MultiPlanItem
 {
-
-    std::cout << " called execplan " << std::endl;
     ExecPlan(int local_comm_rank, bool _mgpuPlan, rocfft_location_t _location)
         : location(_location)
         , mgpuPlan(_mgpuPlan)
