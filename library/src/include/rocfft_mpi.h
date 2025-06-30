@@ -94,6 +94,16 @@ public:
         return mpi_comm == MPI_COMM_NULL;
     }
 
+    // split communicator
+    void split(MPI_Comm parent, int color, int key)
+    {
+        free();  // release any old communicator
+        if(parent != MPI_COMM_NULL && MPI_Comm_split(parent, color, key, &mpi_comm) != MPI_SUCCESS)
+        {
+            throw std::runtime_error("MPI_Comm_split failed");
+        }
+    }    
+
 private:
     MPI_Comm mpi_comm = MPI_COMM_NULL;
 };

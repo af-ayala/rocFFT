@@ -2303,6 +2303,23 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     outputItems = unpack_ops;
 }
 
+static bool is_uniform_pencil(const rocfft_field_t& inField, const rocfft_field_t& outField)
+{
+    if(inField.bricks.size() != outField.bricks.size() || inField.bricks.empty())
+        return false;
+
+    size_t count = inField.bricks[0].count_elems();
+    for(size_t i = 0; i < inField.bricks.size(); ++i)
+    {
+        if(inField.bricks[i].count_elems() != count ||
+           outField.bricks[i].count_elems() != count)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
     const auto local_comm_rank = get_local_comm_rank();
@@ -2342,9 +2359,60 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     if(contiguousInputDims.empty() || contiguousOutputDims.empty())
         return false;
 
-    const auto elem_size = element_size(precision, desc.inArrayType);
+    // enable pencil decomposition
+    // create OptMultiDevicePlan using CommAllToAll with subcommunicator
+    if(is_uniform_pencil(desc.inFields.front(), desc.outFields.front()))
+    {
+        std::cout << "[INFO] Using distributed pencil plan with subcommunicator\n";
 
+        int Px = desc.imgrid[0];
+        int Py = desc.imgrid[1];
+        int Pz = desc.imgrid.size() > 2 ? desc.imgrid[2] : 1;
+
+        int global_rank = get_local_comm_rank();
+        int x = global_rank % Px;
+        int y = (global_rank / Px) % Py;
+        int z = global_rank / (Px * Py);
+
+        int group = y;   // group by fixed Y for X->Y transpose
+        int key   = x;   // preserve X-order
+
+        desc.use_subcomm = true;
+        desc.subcomm.split(desc.mpi_comm, group, key);
+
+        const auto elem_size = element_size(precision, desc.inArrayType);
+
+        std::vector<BufferPtr> inputBufs =
+            GatherUserBuffers(BufferPtr::user_input, desc.inFields.front().bricks);
+        std::vector<BufferPtr> outputBufs =
+            GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
+
+        std::vector<size_t> inputItems;
+        std::vector<size_t> midItems;
+        std::vector<size_t> outputItems;
+
+        // first set of local FFTs
+        C2CField(desc.inFields.front(), {0}, inputBufs, inputBufs, {}, inputItems);
+
+        // intermediate transpose
+        GlobalTransposeA2A(elem_size,
+                           desc.inFields.front(),
+                           desc.outFields.front(),
+                           inputBufs,
+                           outputBufs,
+                           inputItems,
+                           midItems,
+                           transposeNumber);
+
+        // second set of local FFTs
+        C2CField(desc.outFields.front(), {1}, outputBufs, outputBufs, midItems, outputItems);
+
+        return true;
+    }
+
+    // default slab depcomposition logic
     // transform contiguous input dims
+    const auto elem_size = element_size(precision, desc.inArrayType);
 
     // gather up input pointers and allocate temp storage for
     // FFTed contiguous input dims (since we don't want to

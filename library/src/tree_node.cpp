@@ -921,7 +921,13 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 {
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
-    this->comm = plan->desc.mpi_comm;
+    this->comm = plan->desc.use_subcomm ? plan->desc.subcomm : plan->desc.mpi_comm;
+
+    int sub_rank = -1, sub_size = -1;
+    MPI_Comm_rank(this->comm, &sub_rank);
+    MPI_Comm_size(this->comm, &sub_size);
+    std::cerr << "ALAN NEW [Rank " << sub_rank << "] Using communicator " << this->comm
+            << " of size " << sub_size << std::endl;
 
     int rank;
     MPI_Comm_rank(this->comm, &rank);
@@ -962,7 +968,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                           recvBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
                                           MPI_CHAR,
-                                          plan->desc.mpi_comm,
+                                          this->comm,
                                           &request);
 
         if(mpiret != MPI_SUCCESS)
@@ -1008,7 +1014,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                            intRecvCounts.data(),
                                            intRecvOffsets.data(),
                                            rocfft_type_to_mpi_type(precision, arrayType),
-                                           plan->desc.mpi_comm,
+                                           this->comm,
                                            &request);
 
         if(mpiret != MPI_SUCCESS)

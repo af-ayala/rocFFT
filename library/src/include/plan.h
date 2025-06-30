@@ -134,6 +134,8 @@ struct rocfft_plan_description_t
     rocfft_comm_type comm_type = rocfft_comm_none;
 #ifdef ROCFFT_MPI_ENABLE
     MPI_Comm_wrapper_t mpi_comm;
+    bool use_subcomm = false;
+    MPI_Comm_wrapper_t subcomm;
 #endif
 
     LoadOps  loadOps;
