@@ -1981,6 +1981,9 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     std::vector<size_t>&       outputItems,
                                     size_t                     transposeNumber)
 {
+
+    std::cout << "called GlobalTranspose" << std::endl;
+
     // All-to-all transpose is preferred as it's faster. This requires
     // that each rank have a single base pointer to send/receive with
     // offsets for every other rank.
