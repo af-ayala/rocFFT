@@ -95,10 +95,10 @@ public:
     }
 
     // split communicator
-    void split(MPI_Comm parent, int color, int key)
+    void split(MPI_Comm parent, int group, int key)
     {
         free(); // release any old communicator
-        if(parent != MPI_COMM_NULL && MPI_Comm_split(parent, color, key, &mpi_comm) != MPI_SUCCESS)
+        if(parent != MPI_COMM_NULL && MPI_Comm_split(parent, group, key, &mpi_comm) != MPI_SUCCESS)
         {
             throw std::runtime_error("MPI_Comm_split failed");
         }
