@@ -652,7 +652,7 @@ void CommScatter::ExecuteAsync(const rocfft_plan     plan,
 {
     rocfft_scoped_device dev(srcLocation.device);
 
-    std::cout << "Using CommScatter kia" << std::endl;
+    std::cout << "Using CommScatter" << std::endl;
 
     if(LOG_PLAN_ENABLED())
     {

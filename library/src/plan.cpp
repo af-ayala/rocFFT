@@ -44,7 +44,6 @@
 #include <algorithm>
 #include <assert.h>
 #include <functional>
-#include <iostream>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -52,7 +51,6 @@
 #include <set>
 #include <sstream>
 #include <vector>
-using namespace std;
 
 #ifdef ROCFFT_MPI_ENABLE
 #include <type_traits>
@@ -1586,7 +1584,6 @@ static bool DimensionSplitInField(size_t length, size_t dimIdx, const rocfft_fie
 void rocfft_plan_t::GatherScatterSingleDevicePlan(std::unique_ptr<ExecPlan>&& execPlanPtr)
 {
 
-    std::cout << "GatherScatterSingleDevicePlan" << std::endl;
 
     // The smart pointer will be moved into the multi-plan during this
     // function, so keep a plain non-owning pointer
@@ -1986,7 +1983,6 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     size_t                     transposeNumber)
 {
 
-    std::cout << "called GlobalTranspose" << std::endl;
 
     // All-to-all transpose is preferred as it's faster. This requires
     // that each rank have a single base pointer to send/receive with
@@ -2024,7 +2020,6 @@ void rocfft_plan_t::GlobalTransposeP2P(size_t                     elem_size,
 {
     std::vector<TempBufferLease> packBufs;
 
-    std::cout << "called rocfft_plan_t::GlobalTransposeP2P" << std::endl;
 
     const auto local_comm_rank = get_local_comm_rank();
 
@@ -2123,7 +2118,6 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                        std::vector<size_t>&       outputItems,
                                        const std::string&         itemGroup)
 {
-    std::cout << "called rocfft_plan_t::GlobalTransposeA2A" << std::endl;
     const auto local_comm_rank = get_local_comm_rank();
     const auto local_comm_size = get_local_comm_size();
 
@@ -2403,7 +2397,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // create OptMultiDevicePlan using CommAllToAll with subcommunicators
     if(is_uniform_pencil(desc.inFields.front(), desc.outFields.front()))
     {
-        std::cout << "[INFO] Using distributed pencil plan with subcommunicator\n";
 
         int Px = desc.imgrid[0];
         int Py = desc.imgrid[1];
@@ -3133,7 +3126,6 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
                 // multi-device was not requested, or we can't optimize for
                 // that case), fall back to single-device plan
 
-                std::cout << "falling back to single-device plan" << std::endl;
 
                 NodeMetaData rootPlanData(nullptr);
                 set_rootplan_params(plan, rootPlanData);
