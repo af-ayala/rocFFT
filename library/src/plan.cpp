@@ -1585,6 +1585,9 @@ static bool DimensionSplitInField(size_t length, size_t dimIdx, const rocfft_fie
 // execPlan with nodes to implement the FFT.
 void rocfft_plan_t::GatherScatterSingleDevicePlan(std::unique_ptr<ExecPlan>&& execPlanPtr)
 {
+    
+    std::cout << "GatherScatterSingleDevicePlan" << std::endl;
+
     // The smart pointer will be moved into the multi-plan during this
     // function, so keep a plain non-owning pointer
     auto execPlan = execPlanPtr.get();
