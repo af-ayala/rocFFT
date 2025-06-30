@@ -368,6 +368,7 @@ void rocfft_plan_t::Execute(void* in_buffer[], void* out_buffer[], rocfft_execut
         // Launch this item async:
         if(item.ExecutesOnRank(local_comm_rank))
         {
+            std::cout << "calling item.ExecutesOnRank(local_comm_rank " << std::endl;
             item.ExecuteAsync(this, in_buffer, out_buffer, info, idx);
         }
     }
