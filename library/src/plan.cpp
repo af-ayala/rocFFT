@@ -2433,9 +2433,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
 auto MakeTempBufferCtor = [](const std::vector<rocfft_brick_t>& bricks)
 {
-    return [&bricks](size_t userIdx)
+    return [&bricks](size_t userIdx, int comm_rank)
     {
-        int comm_rank = bricks[userIdx].location.comm_rank;
         return BufferPtr::temp(std::make_shared<InternalTempBuffer>(comm_rank));
     };
 };
