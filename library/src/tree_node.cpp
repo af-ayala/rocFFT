@@ -672,8 +672,10 @@ void CommScatter::ExecuteAsync(const rocfft_plan     plan,
                                          arrayType);
 
         hipError_t err = hipSuccess;
+        
         if(op.destLocation.comm_rank == srcLocation.comm_rank)
         {
+            // intra-process communication
             const auto memSize = op.numElems * element_size(precision, arrayType);
             if(local_comm_rank == op.destLocation.comm_rank)
             {
