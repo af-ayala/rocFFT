@@ -2320,18 +2320,40 @@ static bool is_uniform_pencil(const rocfft_field_t& inField, const rocfft_field_
 }
 
 // create an intermediate field aligned along a given dimension
-rocfft_field_t create_intermediate_field(const rocfft_plan_description_t& desc, int dim)
+rocfft_field_t create_intermediate_field(const rocfft_plan_description_t& desc, int alignedDim)
 {
     rocfft_field_t newField;
     const auto&    srcField = desc.inFields.front();
 
     newField.bricks.resize(srcField.bricks.size());
+
     for(size_t i = 0; i < srcField.bricks.size(); ++i)
     {
-        const auto&    brick    = srcField.bricks[i];
-        rocfft_brick_t newBrick = brick;
+        const auto& brick = srcField.bricks[i];
+        rocfft_brick_t newBrick;
 
-        // this may need to permute strides/dims
+        newBrick.lower = brick.lower;
+        newBrick.upper = brick.upper;
+        newBrick.location = brick.location;
+
+        auto len = brick.length();
+        std::vector<size_t> perm(len.size());
+        std::iota(perm.begin(), perm.end(), 0);
+
+        // Move alignedDim to the front
+        std::rotate(perm.begin(), perm.begin() + alignedDim, perm.begin() + alignedDim + 1);
+
+        // Compute strides so that alignedDim is the fastest
+        std::vector<size_t> strides(len.size());
+        size_t s = 1;
+        for(size_t j = 0; j < perm.size(); ++j)
+        {
+            strides[perm[j]] = s;
+            s *= len[perm[j]];
+        }
+
+        newBrick.stride = strides;
+
         newField.bricks[i] = newBrick;
     }
 
@@ -2416,11 +2438,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         rocfft_field_t         tmpYField = create_intermediate_field(desc, 1); // align along Y
         // std::vector<BufferPtr> tmpYBufs  = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
 
-auto temp_ctor = [](size_t userIdx, int comm_rank) {
-    return BufferPtr::temp(std::make_shared<InternalTempBuffer>(comm_rank));
-};
-
-std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(temp_ctor, tmpYField.bricks);        
+std::vector<BufferPtr> tmpYBufs = GatherUserBuffers(BufferPtr::temp, tmpYField.bricks);
 
         GlobalTransposeA2A(elem_size,
                            desc.inFields.front(),
