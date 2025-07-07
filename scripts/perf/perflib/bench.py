@@ -199,9 +199,11 @@ def run(bench,
 
     if proc.returncode == 0:
         for m in re.finditer(
-                '(?:Max rank time|Execution gpu time):\s*([0-9. ]+)\s*ms', cout,
-                re.MULTILINE):
-            times.append(list(map(float, m.group(1).split(' '))))
+                r'(?:Max rank time|Execution gpu time):\s*([0-9. ]+)\s*ms',
+                cout, re.MULTILINE):
+            raw = m.group(1)
+            t = [float(x) for x in raw.split() if x.strip()]
+            times.append(t)
     else:
         logging.info("PROCESS FAILED with return code " + str(proc.returncode))
 
