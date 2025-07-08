@@ -302,7 +302,7 @@ def generate_pts_dat(dat):
             sys.exit(1)
 
         # Multi-process and multi-gpu performance
-        ngpus_per_node = len(gpus)
+        ngpus_per_node = max(1, len(gpus))
         nranks = max(1, len(ranks))
 
         nnodes = max(1,
