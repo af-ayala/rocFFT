@@ -312,11 +312,6 @@ def generate_pts_dat(dat):
         new_row.append(ngpus_per_node)
         new_row.append(nnodes)
 
-        print("Total GPUs:", ngpus_per_node, gpus)
-        print("Total ranks:", nranks, ranks)
-        print("First ifield brick:", bricks['ifield'][0])
-        print("First ofield brick:", bricks['ofield'][0])
-
         # Input layout
         input_split_type = perflib.utils.get_decomposition_type(
             bricks['ifield'], label="ifield")
@@ -331,21 +326,7 @@ def generate_pts_dat(dat):
         new_row.append(output_split_type)
         new_row.extend(output_grid)
 
-        # Print debug info
-        '''
-        print("Total GPUs used:", len(gpus))
-        print("Total ranks used:", len(ranks))
-        print("Input  grid dimensions (X, Y, Z):", input_grid)
-        print("Output grid dimensions (X, Y, Z):", output_grid)
-        print("Input  decomposition type:", input_split_type)
-        print("Output decomposition type:", output_split_type)
-
-        print("\nInput brick layout:")
-        perflib.utils.print_mgpu_data_layout(bricks['ifield'])
-        print("\nOutput brick layout:")
-        perflib.utils.print_mgpu_data_layout(bricks['ofield'])
-        '''
-
+        # Statistics
         new_row.extend(
             mdat_df.loc[row_idx,
                         ['median_sample', 'median_low', 'median_high']].

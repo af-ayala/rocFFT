@@ -306,7 +306,7 @@ def get_decomposition_type(bricks, label="unknown"):
 
 def get_proc_grid(bricks):
     if not bricks:
-        return (0, 0, 0)
+        return (1, 1, 1)
     lowers = [b['lower'] for b in bricks]
     grid_dims = []
     for i in range(3):  # X, Y, Z
