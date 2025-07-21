@@ -906,7 +906,7 @@ void CommGather::Print(rocfft_ostream& os, const int indent) const
 
 std::array<int, 3> CommAllToAll::rank_to_coords(int rank, const std::array<int, 3>& grid)
 {
-    int px = grid[0], py = grid[1], pz = grid[2];
+    int py = grid[1], pz = grid[2];
     int z = rank % pz;
     int y = (rank / pz) % py;
     int x = rank / (pz * py);
