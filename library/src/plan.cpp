@@ -2968,7 +2968,12 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
                     }
             };
 
+            std::cerr << "[Rank " << rank << "] === BRICK OWNERSHIP ===\n";
+            print_field_bricks("Input", plan->desc.inFields);
+            print_field_bricks("Output", plan->desc.outFields);
+            std::cerr << "====================================\n";
 
+        }
 
 
         // Sort the parameters to be row major, in case they're not
