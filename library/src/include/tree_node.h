@@ -1363,6 +1363,15 @@ private:
     std::vector<hipEvent_wrapper_t> events;
 };
 
+// Macro for sub-communicator
+#ifdef ROCFFT_MPI_ENABLE
+#define ROCFFT_COMMALLTOALL_SUBCOMM_ARG , MPI_Comm_wrapper_t subcomm = {}
+#define ROCFFT_COMMALLTOALL_SUBCOMM_INIT , subcomm(std::move(subcomm))
+#else
+#define ROCFFT_COMMALLTOALL_SUBCOMM_ARG
+#define ROCFFT_COMMALLTOALL_SUBCOMM_INIT
+#endif
+
 // Send data from all ranks to all ranks in the plan.  Each rank must
 // send from/to a single buffer (with different read/write offsets
 // for each other rank).
@@ -1370,6 +1379,7 @@ private:
 // The former is preferable, as it is usually more optimized.
 struct CommAllToAll : public MultiPlanItem
 {
+
     CommAllToAll(rocfft_precision           _precision,
                  rocfft_array_type          _arrayType,
                  const std::vector<size_t>& _sendOffsets,
@@ -1379,8 +1389,7 @@ struct CommAllToAll : public MultiPlanItem
                  BufferPtr                  _sendBuf,
                  BufferPtr                  _recvBuf,
                  bool                       uniformCounts,
-                 bool                       useSubcomm = false,
-                 MPI_Comm_wrapper_t         subcomm    = {})
+                 bool                       useSubcomm = false ROCFFT_COMMALLTOALL_SUBCOMM_ARG)
         : precision(_precision)
         , arrayType(_arrayType)
         , sendOffsets(_sendOffsets)
@@ -1390,8 +1399,7 @@ struct CommAllToAll : public MultiPlanItem
         , sendBuf(_sendBuf)
         , recvBuf(_recvBuf)
         , uniform_counts(uniformCounts)
-        , use_subcomm(useSubcomm)
-        , subcomm(std::move(subcomm))
+        , use_subcomm(useSubcomm) ROCFFT_COMMALLTOALL_SUBCOMM_INIT
     {
         // Currently MPI interface uses 32-bit signed ints, so assert
         // that our counts/offsets don't overflow that type
@@ -1459,8 +1467,11 @@ private:
     bool uniform_counts = false;
 
     // subcomm for optimizations whenever possible
-    bool               use_subcomm = false;
+    bool use_subcomm = false;
+
+#ifdef ROCFFT_MPI_ENABLE
     MPI_Comm_wrapper_t subcomm;
+#endif
 
     // helper methods
     static std::array<int, 3> rank_to_coords(int rank, const std::array<int, 3>& grid);
