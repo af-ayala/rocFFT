@@ -840,7 +840,7 @@ public:
         : comm_rank(comm_rank)
     {
     }
-    InternalTempBuffer(const InternalTempBuffer&) = delete;
+    InternalTempBuffer(const InternalTempBuffer&)            = delete;
     InternalTempBuffer& operator=(const InternalTempBuffer&) = delete;
     ~InternalTempBuffer()                                    = default;
 
@@ -896,8 +896,8 @@ private:
 class BufferPtr
 {
 public:
-    BufferPtr()                 = default;
-    BufferPtr(const BufferPtr&) = default;
+    BufferPtr()                            = default;
+    BufferPtr(const BufferPtr&)            = default;
     BufferPtr& operator=(const BufferPtr&) = default;
     ~BufferPtr()                           = default;
 
@@ -1024,7 +1024,7 @@ struct MultiPlanItem
 {
     MultiPlanItem();
     virtual ~MultiPlanItem();
-    MultiPlanItem(const MultiPlanItem&) = delete;
+    MultiPlanItem(const MultiPlanItem&)            = delete;
     MultiPlanItem& operator=(const MultiPlanItem&) = delete;
 
     // multi-process requests
@@ -1376,7 +1376,10 @@ struct CommAllToAll : public MultiPlanItem
                  const std::vector<size_t>& _recvOffsets,
                  const std::vector<size_t>& _recvCounts,
                  BufferPtr                  _sendBuf,
-                 BufferPtr                  _recvBuf)
+                 BufferPtr                  _recvBuf,
+                 bool                       uniformCounts,
+                 bool                       useSubcomm = false,
+                 MPI_Comm_wrapper_t         subcomm    = {})
         : precision(_precision)
         , arrayType(_arrayType)
         , sendOffsets(_sendOffsets)
@@ -1385,6 +1388,9 @@ struct CommAllToAll : public MultiPlanItem
         , recvCounts(_recvCounts)
         , sendBuf(_sendBuf)
         , recvBuf(_recvBuf)
+        , uniform_counts(uniformCounts)
+        , use_subcomm(useSubcomm)
+        , subcomm(std::move(subcomm))
     {
         // Currently MPI interface uses 32-bit signed ints, so assert
         // that our counts/offsets don't overflow that type
@@ -1447,6 +1453,18 @@ private:
     // send/receive buffers
     const BufferPtr sendBuf;
     const BufferPtr recvBuf;
+
+    // check uniform counts for using AlltoAll instead of AlltoAllv
+    bool uniform_counts = false;
+
+    // subcomm for optimizations whenever possible
+    bool               use_subcomm = false;
+    MPI_Comm_wrapper_t subcomm;
+
+    // helper methods
+    static std::array<int, 3> rank_to_coords(int rank, const std::array<int, 3>& grid);
+    static int calculate_color_for_subcomm(int rank, const std::array<int, 3>& grid, int split_dim);
+    static int calculate_subcomm_size(const std::array<int, 3>& grid, int split_dim);
 };
 
 // Tree-structured FFT plan.  This is specific to a single device on

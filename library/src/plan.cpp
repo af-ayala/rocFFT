@@ -1199,7 +1199,7 @@ struct TempBufferLease
         buf         = std::move(other.buf);
         return *this;
     }
-    TempBufferLease(const TempBufferLease& other) = delete;
+    TempBufferLease(const TempBufferLease& other)            = delete;
     TempBufferLease& operator=(const TempBufferLease& other) = delete;
 
     std::shared_ptr<InternalTempBuffer> data()
@@ -2268,15 +2268,60 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
         }
     }
 
+    // check if uniform exchange to use MPI_Alltoall
+    bool uniform_counts = std::all_of(sendCounts.begin(),
+                                      sendCounts.end(),
+                                      [&](size_t c) { return c == sendCounts[0]; })
+                          && std::all_of(recvCounts.begin(), recvCounts.end(), [&](size_t c) {
+                                 return c == recvCounts[0];
+                             });
+
+    // check if optimization with sub-communicators is possible
+    bool               use_subcomm = false;
+    MPI_Comm_wrapper_t subcomm;
+
+    if(uniform_counts
+       && CommAllToAll::can_form_subcommunicators(desc.mpi_comm, sendCounts, recvCounts))
+    {
+        int comm_size, rank;
+        MPI_Comm_size(desc.mpi_comm, &comm_size);
+        MPI_Comm_rank(desc.mpi_comm, &rank);
+
+        int subcomm_size = CommAllToAll::calculate_subcomm_size(comm_size);
+
+        // get input/output grid from plan description
+        const auto& imgrid = desc.inGrid;
+        const auto& omgrid = desc.outGrid;
+
+        // create temporary grids consistent for internal rank_to_coords()
+        // valid also for 1D and 2D FFTs
+        std::array<int, 3> in_grid  = {1, 1, 1};
+        std::array<int, 3> out_grid = {1, 1, 1};
+
+        for(size_t i = 0; i < imgrid.size(); ++i)
+            in_grid[i] = imgrid[i];
+        for(size_t i = 0; i < omgrid.size(); ++i)
+            out_grid[i] = omgrid[i];
+
+        int color = CommAllToAll::calculate_color_for_subcomm(rank, in_grid, out_grid);
+
+        subcomm.split(desc.mpi_comm, color, rank);
+        use_subcomm = true;
+    }
+
     // add the all-to-all op itself, which depends on pack ops
-    auto alltoall_ptr                   = std::make_unique<CommAllToAll>(precision,
+    auto alltoall_ptr = std::make_unique<CommAllToAll>(precision,
                                                        desc.inArrayType,
                                                        send_offsets,
                                                        send_counts,
                                                        recv_offsets,
                                                        recv_counts,
                                                        BufferPtr::temp(send_buf.data()),
-                                                       BufferPtr::temp(recv_buf.data()));
+                                                       BufferPtr::temp(recv_buf.data()),
+                                                       uniform_counts,
+                                                       use_subcomm,
+                                                       std::move(subcomm));
+
     auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
     multiPlan[alltoall_op]->group       = itemGroup;
     multiPlan[alltoall_op]->description = "all-to-all communication";
@@ -2309,6 +2354,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     if(placement == rocfft_placement_inplace)
         return false;
 
+    // input/output Fields must not be empty
     if(desc.inFields.empty() || desc.outFields.empty())
         return false;
 
@@ -2351,6 +2397,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             tempBuffers, local_comm_rank, inBrick.location, inBrick.count_elems(), elem_size);
         inputFFTBufs.emplace_back(BufferPtr::temp(inputTemp.back().data()));
     }
+
+    // perform FFTs along dimensions already contiguous
     std::vector<size_t> inputFFTItems;
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);

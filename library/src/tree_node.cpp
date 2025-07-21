@@ -904,6 +904,39 @@ void CommGather::Print(rocfft_ostream& os, const int indent) const
     }
 }
 
+std::array<int, 3> CommAllToAll::rank_to_coords(int rank, const std::array<int, 3>& grid)
+{
+    int px = grid[0], py = grid[1], pz = grid[2];
+    int z = rank % pz;
+    int y = (rank / pz) % py;
+    int x = rank / (pz * py);
+    return {x, y, z};
+}
+
+int CommAllToAll::calculate_color_for_subcomm(int                       rank,
+                                              const std::array<int, 3>& grid,
+                                              int                       split_dim)
+{
+    const auto [x, y, z] = rank_to_coords(rank, grid);
+
+    switch(split_dim)
+    {
+    case 0: // Transposing along X → group by YZ
+        return y * grid[2] + z;
+    case 1: // Transposing along Y → group by XZ
+        return x * grid[2] + z;
+    case 2: // Transposing along Z → group by XY
+        return x * grid[1] + y;
+    default:
+        throw std::runtime_error("Invalid split_dim");
+    }
+}
+
+int CommAllToAll::calculate_subcomm_size(const std::array<int, 3>& grid, int split_dim)
+{
+    return grid[split_dim];
+}
+
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
                                 void*                 out_buffer[],
@@ -927,14 +960,28 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
     const auto elem_size = element_size(precision, arrayType);
 
-    // check if uniform counts
-    auto count_matches_first = [&](size_t count) { return count == sendCounts[0]; };
-    bool uniform_counts = std::all_of(sendCounts.begin(), sendCounts.end(), count_matches_first)
-                          && std::all_of(recvCounts.begin(), recvCounts.end(), count_matches_first);
-
     MPI_Request request;
 
-    if(uniform_counts)
+    if(uniform_counts && use_subcomm)
+    {
+        // optimized subcommunicator MPI_Ialltoall
+        if(LOG_PLAN_ENABLED())
+            log_plan("Using subcommunicator-based MPI_Ialltoall\n");
+
+        MPI_Comm_wrapper_t subcomm;
+        int color = calculate_color_for_subcomm(local_comm_rank, plan->desc.mpi_comm);
+        subcomm.split(plan->desc.mpi_comm, color, local_comm_rank);
+
+        MPI_Ialltoall(sendBuf.get(...),
+                      send_count_bytes,
+                      MPI_CHAR,
+                      recvBuf.get(...),
+                      send_count_bytes,
+                      MPI_CHAR,
+                      subcomm,
+                      &request);
+    }
+    else if(uniform_counts)
     {
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");
