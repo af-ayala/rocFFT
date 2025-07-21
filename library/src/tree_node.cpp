@@ -1009,7 +1009,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
     if(uniform_counts && use_subcomm)
     {
-        std::cout << "Using subcommunicator-based MPI_Ialltoall\n");
+        std::cout << "Using subcommunicator-based MPI_Ialltoall\n";
 
         if(LOG_PLAN_ENABLED())
             log_plan("Using subcommunicator-based MPI_Ialltoall\n");
@@ -1039,7 +1039,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     }
     else if(uniform_counts)
     {
-        std::cout << "Using just -based MPI_Ialltoall\n");
+        std::cout << "Using just -based MPI_Ialltoall\n";
 
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");
@@ -1070,7 +1070,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     }
     else
     {
-        std::cout << "Using base MPI_Ialltoallv\n");
+        std::cout << "Using base MPI_Ialltoallv\n";
 
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoallv\n");
