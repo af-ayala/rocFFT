@@ -2276,15 +2276,59 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                  return c == recv_counts[0];
                              });
 
+    // obtain the original processor grids configuration
+    auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
+    {
+        if(bricks.empty())
+            return {1, 1, 1};
+
+        // assume b.lower is: [batch, x, y, z] for 3D
+        // [batch, x, y] for 2D, [batch, x] for 1D
+        size_t dim = bricks[0].lower.size() - 1;
+
+        std::cout << "dimension is " << dim << std::endl;
+
+        std::set<size_t> xvals, yvals, zvals;
+
+        for(const auto& b : bricks)
+        {
+            if(dim == 1)        // 1D: only x
+            {
+                xvals.insert(b.lower[1]);
+            }
+            else if(dim == 2)   // 2D: x, y
+            {
+                xvals.insert(b.lower[1]);
+                yvals.insert(b.lower[2]);
+            }
+            else if(dim == 3)   // 3D: x, y, z
+            {
+                xvals.insert(b.lower[1]);
+                yvals.insert(b.lower[2]);
+                zvals.insert(b.lower[3]);
+            }
+            else
+            {
+                throw std::runtime_error("Unexpected brick dimension in infer_grid_from_bricks");
+            }
+        }
+
+        // always return a 3D grid {x, y, z}, fill with 1 where not used
+        int nx = std::max<size_t>(1, xvals.size());
+        int ny = (dim >= 2) ? std::max<size_t>(1, yvals.size()) : 1;
+        int nz = (dim == 3) ? std::max<size_t>(1, zvals.size()) : 1;
+        return {nx, ny, nz};
+    };
+
+
     // create temporary grids consistent for internal rank_to_coords()
     // valid also for 1D and 2D FFTs
     std::array<int, 3> in_grid  = {1, 1, 1};
     std::array<int, 3> out_grid = {1, 1, 1};
-
-    for(size_t i = 0; i < desc.imgrid.size(); ++i)
-        in_grid[i] = desc.imgrid[i];
-    for(size_t i = 0; i < desc.omgrid.size(); ++i)
-        out_grid[i] = desc.omgrid[i];
+    if(!desc.inFields.empty() && !desc.inFields[0].bricks.empty())
+        in_grid = infer_grid_from_bricks(desc.inFields[0].bricks);
+    if(!desc.outFields.empty() && !desc.outFields[0].bricks.empty())
+        out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
 
     std::cout << "input grid " << std::endl;
     for(auto e : in_grid)

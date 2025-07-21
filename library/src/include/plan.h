@@ -176,11 +176,6 @@ struct rocfft_plan_description_t
     // bricks on more than one device
     static bool multiple_devices_in_rank(const rocfft_field_t& field);
 
-#ifdef ROCFFT_MPI_ENABLE
-    std::vector<unsigned int> imgrid;   // input grid (from --imgrid or default)
-    std::vector<unsigned int> omgrid;   // output grid (from --omgrid or default)
-#endif
-
 };
 
 struct rocfft_plan_t
