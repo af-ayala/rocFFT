@@ -1039,7 +1039,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     }
     else if(uniform_counts)
     {
-        std::cout << "Using just -based MPI_Ialltoall\n";
+        std::cout << "Using just based MPI_Ialltoall\n";
 
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");

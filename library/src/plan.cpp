@@ -2279,42 +2279,40 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     // obtain the original processor grids configuration
 auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
 {
-    std::set<size_t> xs, ys, zs;
-
+    std::set<size_t> xvals, yvals, zvals;
     for(const auto& b : bricks)
     {
-        // Defensive: lower.size() can be 2 (1D), 3 (2D), 4 (3D: [batch, x, y, z])
-        // Assume always [batch?, x, y, z], so index = size-3, size-2, size-1
-        int ndim = b.lower.size() - 1; // -1 for batch
-        if(ndim == 1)
+        if(b.lower.size() == 4)
         {
-            xs.insert(b.lower[1]);
+            xvals.insert(b.lower[1]); // usually X
+            yvals.insert(b.lower[2]); // usually Y
+            zvals.insert(b.lower[3]); // usually Z
         }
-        else if(ndim == 2)
+        else if(b.lower.size() == 3)
         {
-            xs.insert(b.lower[1]);
-            ys.insert(b.lower[2]);
+            xvals.insert(b.lower[1]);
+            yvals.insert(b.lower[2]);
         }
-        else if(ndim == 3)
+        else if(b.lower.size() == 2)
         {
-            xs.insert(b.lower[1]);
-            ys.insert(b.lower[2]);
-            zs.insert(b.lower[3]);
-        }
-        else
-        {
-            // Unexpected, treat as scalar
-            xs.insert(0);
+            xvals.insert(b.lower[1]);
         }
     }
-
-    // Infer dimensions: if ys only has 1 element, means no split in Y, same for Z.
-    int nx = std::max<size_t>(1, xs.size());
-    int ny = std::max<size_t>(1, ys.size());
-    int nz = std::max<size_t>(1, zs.size());
-
+    int nx = std::max<int>(1, xvals.size());
+    int ny = std::max<int>(1, yvals.size());
+    int nz = std::max<int>(1, zvals.size());
+    // Fix 2D/1D case: always return 3D grid, pad as 1 if not present
     return {nx, ny, nz};
 };
+
+for(const auto& b : bricks)
+{
+    std::cout << "BRICK lower: ";
+    for(auto v : b.lower)
+        std::cout << v << " ";
+    std::cout << std::endl;
+}
+std::cout << "inferred: nx=" << nx << " ny=" << ny << " nz=" << nz << std::endl;
 
 
 
