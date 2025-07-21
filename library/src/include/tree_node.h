@@ -42,6 +42,7 @@
 #include "kargs.h"
 #include "load_store_ops.h"
 #include "logging.h"
+#include "rocfft_mpi.h"
 #include "rtc_kernel.h"
 #include <hip/hip_runtime_api.h>
 
