@@ -956,7 +956,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
 
-#ifdef ROCFFT_MPI_ENABLE
+    // #ifdef ROCFFT_MPI_ENABLE
 
     const auto elem_size = element_size(precision, arrayType);
 
@@ -964,22 +964,31 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
     if(uniform_counts && use_subcomm)
     {
-        // optimized subcommunicator MPI_Ialltoall
         if(LOG_PLAN_ENABLED())
             log_plan("Using subcommunicator-based MPI_Ialltoall\n");
 
-        MPI_Comm_wrapper_t subcomm;
-        int color = calculate_color_for_subcomm(local_comm_rank, plan->desc.mpi_comm);
-        subcomm.split(plan->desc.mpi_comm, color, local_comm_rank);
+        const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
-        MPI_Ialltoall(sendBuf.get(...),
-                      send_count_bytes,
-                      MPI_CHAR,
-                      recvBuf.get(...),
-                      send_count_bytes,
-                      MPI_CHAR,
-                      subcomm,
-                      &request);
+        const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
+                                          send_count_bytes,
+                                          MPI_CHAR,
+                                          recvBuf.get(in_buffer, out_buffer, local_comm_rank),
+                                          send_count_bytes,
+                                          MPI_CHAR,
+                                          subcomm,
+                                          &request);
+
+        if(mpiret != MPI_SUCCESS)
+        {
+            char errmsg[MPI_MAX_ERROR_STRING];
+            int  errlen = 0;
+            MPI_Error_string(mpiret, errmsg, &errlen);
+
+            comm_status   = COMM_MPI_ERROR;
+            error_message = "MPI_Ialltoall (subcomm) failed on rank "
+                            + std::to_string(local_comm_rank) + ": " + std::string(errmsg);
+            return;
+        }
     }
     else if(uniform_counts)
     {
