@@ -956,7 +956,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
 
-    // #ifdef ROCFFT_MPI_ENABLE
+#ifdef ROCFFT_MPI_ENABLE
 
     const auto elem_size = element_size(precision, arrayType);
 
