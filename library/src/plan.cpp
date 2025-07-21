@@ -2939,6 +2939,38 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
                 throw std::runtime_error("gather brick params failed");
         }
 
+
+        std::cout << "  print fields avant " << std::endl;
+        {
+            int rank; // or 
+            MPI_Comm_rank(plan->desc.mpi_comm, &rank);
+
+                auto print_field_bricks = [&](const std::string& label, const std::vector<rocfft_field_t>& fields) {
+                    for(size_t fidx = 0; fidx < fields.size(); ++fidx)
+                    {
+                        const auto& field = fields[fidx];
+                        for(size_t bidx = 0; bidx < field.bricks.size(); ++bidx)
+                        {
+                            const auto& brick = field.bricks[bidx];
+                            if(brick.location.comm_rank == rank)
+                            {
+                            std::cerr << "[Rank " << rank << "] Input field[" << fidx << "] brick[" << bidx << "]:\n";
+                            std::cerr << "    lower = [batch, dim0, dim1, dim2] = [";
+                            for(auto l : brick.lower) std::cerr << l << " ";
+                            std::cerr << "], upper = [";
+                            for(auto u : brick.upper) std::cerr << u << " ";
+                            std::cerr << "], shape = [";
+                            for(size_t d = 0; d < brick.lower.size(); ++d)
+                                std::cerr << (brick.upper[d] - brick.lower[d]) << " ";
+                            std::cerr << "]\n";
+                            }
+                        }
+                    }
+            };
+
+
+
+
         // Sort the parameters to be row major, in case they're not
         plan->sort();
 
@@ -2952,6 +2984,40 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
 
         // Build an optimized multi-device plan, if possible
         plan->ValidateFields();
+
+        std::cout << "  print fields " << std::endl;
+        {
+            int rank; // or 
+            MPI_Comm_rank(plan->desc.mpi_comm, &rank);
+
+                auto print_field_bricks = [&](const std::string& label, const std::vector<rocfft_field_t>& fields) {
+                    for(size_t fidx = 0; fidx < fields.size(); ++fidx)
+                    {
+                        const auto& field = fields[fidx];
+                        for(size_t bidx = 0; bidx < field.bricks.size(); ++bidx)
+                        {
+                            const auto& brick = field.bricks[bidx];
+                            if(brick.location.comm_rank == rank)
+                            {
+                            std::cerr << "[Rank " << rank << "] Input field[" << fidx << "] brick[" << bidx << "]:\n";
+                            std::cerr << "    lower = [batch, dim0, dim1, dim2] = [";
+                            for(auto l : brick.lower) std::cerr << l << " ";
+                            std::cerr << "], upper = [";
+                            for(auto u : brick.upper) std::cerr << u << " ";
+                            std::cerr << "], shape = [";
+                            for(size_t d = 0; d < brick.lower.size(); ++d)
+                                std::cerr << (brick.upper[d] - brick.lower[d]) << " ";
+                            std::cerr << "]\n";
+                            }
+                        }
+                    }
+            };
+
+            std::cerr << "[Rank " << rank << "] === BRICK OWNERSHIP ===\n";
+            print_field_bricks("Input", plan->desc.inFields);
+            print_field_bricks("Output", plan->desc.outFields);
+            std::cerr << "====================================\n";
+        }        
 
         // If we have no input/output fields, then the single ExecPlan is
         // exactly what we need to do/
