@@ -2277,56 +2277,55 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                              });
 
     // obtain the original processor grids configuration
-    auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
+auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
+{
+    std::set<size_t> xs, ys, zs;
+
+    for(const auto& b : bricks)
     {
-        if(bricks.empty())
-            return {1, 1, 1};
-
-        // assume b.lower is: [batch, x, y, z] for 3D
-        // [batch, x, y] for 2D, [batch, x] for 1D
-        size_t dim = bricks[0].lower.size() - 1;
-
-        std::cout << "dimension is " << dim << std::endl;
-
-        std::set<size_t> xvals, yvals, zvals;
-
-        for(const auto& b : bricks)
+        // Defensive: lower.size() can be 2 (1D), 3 (2D), 4 (3D: [batch, x, y, z])
+        // Assume always [batch?, x, y, z], so index = size-3, size-2, size-1
+        int ndim = b.lower.size() - 1; // -1 for batch
+        if(ndim == 1)
         {
-            if(dim == 1)        // 1D: only x
-            {
-                xvals.insert(b.lower[1]);
-            }
-            else if(dim == 2)   // 2D: x, y
-            {
-                xvals.insert(b.lower[1]);
-                yvals.insert(b.lower[2]);
-            }
-            else if(dim == 3)   // 3D: x, y, z
-            {
-                xvals.insert(b.lower[1]);
-                yvals.insert(b.lower[2]);
-                zvals.insert(b.lower[3]);
-            }
-            else
-            {
-                throw std::runtime_error("Unexpected brick dimension in infer_grid_from_bricks");
-            }
+            xs.insert(b.lower[1]);
         }
+        else if(ndim == 2)
+        {
+            xs.insert(b.lower[1]);
+            ys.insert(b.lower[2]);
+        }
+        else if(ndim == 3)
+        {
+            xs.insert(b.lower[1]);
+            ys.insert(b.lower[2]);
+            zs.insert(b.lower[3]);
+        }
+        else
+        {
+            // Unexpected, treat as scalar
+            xs.insert(0);
+        }
+    }
 
-        // always return a 3D grid {x, y, z}, fill with 1 where not used
-        int nx = std::max<size_t>(1, xvals.size());
-        int ny = (dim >= 2) ? std::max<size_t>(1, yvals.size()) : 1;
-        int nz = (dim == 3) ? std::max<size_t>(1, zvals.size()) : 1;
-        return {nx, ny, nz};
-    };
+    // Infer dimensions: if ys only has 1 element, means no split in Y, same for Z.
+    int nx = std::max<size_t>(1, xs.size());
+    int ny = std::max<size_t>(1, ys.size());
+    int nz = std::max<size_t>(1, zs.size());
+
+    return {nx, ny, nz};
+};
+
 
 
     // create temporary grids consistent for internal rank_to_coords()
     // valid also for 1D and 2D FFTs
     std::array<int, 3> in_grid  = {1, 1, 1};
     std::array<int, 3> out_grid = {1, 1, 1};
+
     if(!desc.inFields.empty() && !desc.inFields[0].bricks.empty())
         in_grid = infer_grid_from_bricks(desc.inFields[0].bricks);
+
     if(!desc.outFields.empty() && !desc.outFields[0].bricks.empty())
         out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
 
