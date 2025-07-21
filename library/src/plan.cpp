@@ -2281,10 +2281,10 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     std::array<int, 3> in_grid  = {1, 1, 1};
     std::array<int, 3> out_grid = {1, 1, 1};
 
-    for(size_t i = 0; i < desc.imGrid.size(); ++i)
-        in_grid[i] = desc.imGrid[i];
-    for(size_t i = 0; i < desc.omGrid.size(); ++i)
-        out_grid[i] = desc.omGrid[i];
+    for(size_t i = 0; i < desc.imgrid.size(); ++i)
+        in_grid[i] = desc.imgrid[i];
+    for(size_t i = 0; i < desc.omgrid.size(); ++i)
+        out_grid[i] = desc.omgrid[i];
 
     std::cout << "input grid " << std::endl;
     for(auto e : in_grid)
