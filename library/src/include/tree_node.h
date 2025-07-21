@@ -1451,12 +1451,17 @@ struct CommAllToAll : public MultiPlanItem
 #ifdef ROCFFT_MPI_ENABLE
     // helper methods
     static std::array<int, 3> rank_to_coords(int rank, const std::array<int, 3>& grid);
-    
-    static int calculate_color_for_subcomm(int rank, const std::array<int, 3>& in_grid, const std::array<int, 3>& out_grid);
-    
-    static int calculate_subcomm_size(const std::array<int, 3>& in_grid, const std::array<int, 3>& out_grid);
 
-    static bool can_form_subcommunicators(MPI_Comm global_comm, const std::vector<size_t>& send_counts, const std::vector<size_t>& recv_counts, const std::array<int, 3>& in_grid, const std::array<int, 3>& out_grid);
+    static int calculate_color_for_subcomm(int rank, const std::array<int, 3>& grid, int split_dim);
+
+    static int calculate_subcomm_size(const std::array<int, 3>& grid, int split_dim);
+    
+    static bool can_form_subcommunicators(
+        MPI_Comm global_comm,
+        const std::vector<size_t>& send_counts,
+        const std::vector<size_t>& recv_counts,
+        const std::array<int, 3>& in_grid,
+        const std::array<int, 3>& out_grid);
 #endif
 
 private:
