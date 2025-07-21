@@ -904,6 +904,7 @@ void CommGather::Print(rocfft_ostream& os, const int indent) const
     }
 }
 
+#ifdef ROCFFT_MPI_ENABLE
 std::array<int, 3> CommAllToAll::rank_to_coords(int rank, const std::array<int, 3>& grid)
 {
     int py = grid[1], pz = grid[2];
@@ -979,6 +980,7 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
     // All conditions satisfied!
     return true;
 }
+#endif
 
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
