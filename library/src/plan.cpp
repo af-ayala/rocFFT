@@ -2276,34 +2276,45 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                  return c == recv_counts[0];
                              });
 
+    // create temporary grids consistent for internal rank_to_coords()
+    // valid also for 1D and 2D FFTs
+    std::array<int, 3> in_grid  = {1, 1, 1};
+    std::array<int, 3> out_grid = {1, 1, 1};
+
+    for(size_t i = 0; i < desc.imGrid.size(); ++i)
+        in_grid[i] = desc.imGrid[i];
+    for(size_t i = 0; i < desc.omGrid.size(); ++i)
+        out_grid[i] = desc.omGrid[i];
+
+    std::cout << "input grid " << std::endl;
+    for(auto e : in_grid)
+        std::cout << e << " , ";
+    std::cout << std::endl;
+
+    std::cout << "output grid " << std::endl;
+    for(auto e : out_grid)
+        std::cout << e << " , ";
+    std::cout << std::endl;
+
     // check if optimization with sub-communicators is possible
     bool               use_subcomm = false;
     MPI_Comm_wrapper_t subcomm;
 
     if(uniform_counts
-       && CommAllToAll::can_form_subcommunicators(desc.mpi_comm, send_counts, recv_counts))
+       && CommAllToAll::can_form_subcommunicators(
+           desc.mpi_comm, send_counts, recv_counts, in_grid, out_grid))
     {
         int comm_size, rank;
         MPI_Comm_size(desc.mpi_comm, &comm_size);
         MPI_Comm_rank(desc.mpi_comm, &rank);
 
-        int subcomm_size = CommAllToAll::calculate_subcomm_size(comm_size);
+        // Find split_dim (the only dimension which differs)
+        int split_dim = -1;
+        for(int i = 0; i < 3; ++i)
+            if(in_grid[i] != out_grid[i])
+                split_dim = i;
 
-        // get input/output grid from plan description
-        const auto& imgrid = desc.inGrid;
-        const auto& omgrid = desc.outGrid;
-
-        // create temporary grids consistent for internal rank_to_coords()
-        // valid also for 1D and 2D FFTs
-        std::array<int, 3> in_grid  = {1, 1, 1};
-        std::array<int, 3> out_grid = {1, 1, 1};
-
-        for(size_t i = 0; i < imgrid.size(); ++i)
-            in_grid[i] = imgrid[i];
-        for(size_t i = 0; i < omgrid.size(); ++i)
-            out_grid[i] = omgrid[i];
-
-        int color = CommAllToAll::calculate_color_for_subcomm(rank, in_grid, out_grid);
+        int color = CommAllToAll::calculate_color_for_subcomm(rank, in_grid, split_dim);
 
         subcomm.split(desc.mpi_comm, color, rank);
         use_subcomm = true;
