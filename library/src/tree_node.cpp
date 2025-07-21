@@ -937,6 +937,49 @@ int CommAllToAll::calculate_subcomm_size(const std::array<int, 3>& grid, int spl
     return grid[split_dim];
 }
 
+bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
+                                             const std::vector<size_t>& send_counts,
+                                             const std::vector<size_t>& recv_counts,
+                                             const std::array<int, 3>& in_grid,
+                                             const std::array<int, 3>& out_grid)
+{
+    // 1. Uniform counts
+    if(!std::all_of(send_counts.begin(), send_counts.end(), [&](size_t c){ return c == send_counts[0]; }))
+        return false;
+    if(!std::all_of(recv_counts.begin(), recv_counts.end(), [&](size_t c){ return c == recv_counts[0]; }))
+        return false;
+
+    // 2. Check communicator size matches grid product
+    int comm_size = 0;
+    MPI_Comm_size(global_comm, &comm_size);
+    int in_grid_size  = in_grid[0] * in_grid[1] * in_grid[2];
+    int out_grid_size = out_grid[0] * out_grid[1] * out_grid[2];
+    if(comm_size != in_grid_size || comm_size != out_grid_size)
+        return false;
+
+    // 3. Detect a single split dimension (the one that changes)
+    int split_dim = -1;
+    int changes = 0;
+    for(int i = 0; i < 3; ++i)
+    {
+        if(in_grid[i] != out_grid[i])
+        {
+            split_dim = i;
+            ++changes;
+        }
+    }
+    if(changes != 1)  // We only support single-dimension (pencil) redistribution
+        return false;
+
+    // 4. The subcomm size is the value in in_grid[split_dim]
+    int subcomm_size = in_grid[split_dim];
+    if(comm_size % subcomm_size != 0)
+        return false;
+
+    // All conditions satisfied!
+    return true;
+}
+
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
                                 void*                 out_buffer[],
