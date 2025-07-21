@@ -2269,11 +2269,11 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     }
 
     // check if uniform exchange to use MPI_Alltoall
-    bool uniform_counts = std::all_of(sendCounts.begin(),
-                                      sendCounts.end(),
-                                      [&](size_t c) { return c == sendCounts[0]; })
-                          && std::all_of(recvCounts.begin(), recvCounts.end(), [&](size_t c) {
-                                 return c == recvCounts[0];
+    bool uniform_counts = std::all_of(send_counts.begin(),
+                                      send_counts.end(),
+                                      [&](size_t c) { return c == send_counts[0]; })
+                          && std::all_of(recv_counts.begin(), recv_counts.end(), [&](size_t c) {
+                                 return c == recv_counts[0];
                              });
 
     // check if optimization with sub-communicators is possible
@@ -2281,7 +2281,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     MPI_Comm_wrapper_t subcomm;
 
     if(uniform_counts
-       && CommAllToAll::can_form_subcommunicators(desc.mpi_comm, sendCounts, recvCounts))
+       && CommAllToAll::can_form_subcommunicators(desc.mpi_comm, send_counts, recv_counts))
     {
         int comm_size, rank;
         MPI_Comm_size(desc.mpi_comm, &comm_size);
