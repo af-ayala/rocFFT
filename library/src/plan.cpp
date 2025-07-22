@@ -2277,35 +2277,23 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                              });
 
     // obtain the original processor grids configuration
-    auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
+auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
+{
+    std::set<size_t> dim[3];
+    for(const auto& b : bricks)
     {
-        std::set<size_t> xvals, yvals, zvals;
-        for(const auto& b : bricks)
-        {
-            if(b.lower.size() == 4)
-            {
-                xvals.insert(b.lower[1]); // usually X
-                yvals.insert(b.lower[2]); // usually Y
-                zvals.insert(b.lower[3]); // usually Z
-            }
-            else if(b.lower.size() == 3)
-            {
-                xvals.insert(b.lower[1]);
-                yvals.insert(b.lower[2]);
-            }
-            else if(b.lower.size() == 2)
-            {
-                xvals.insert(b.lower[1]);
-            }
-        }
-        int nx = std::max<int>(1, xvals.size());
-        int ny = std::max<int>(1, yvals.size());
-        int nz = std::max<int>(1, zvals.size());
-        // Fix 2D/1D case: always return 3D grid, pad as 1 if not present
-        return {nx, ny, nz};
-    };
-
-
+        size_t n = b.lower.size();
+        if(n < 3) continue; // should never happen
+        // Always use last 3 indices as spatial dims
+        dim[0].insert(b.lower[n-3]);
+        dim[1].insert(b.lower[n-2]);
+        dim[2].insert(b.lower[n-1]);
+    }
+    int d0 = std::max<int>(1, dim[0].size());
+    int d1 = std::max<int>(1, dim[1].size());
+    int d2 = std::max<int>(1, dim[2].size());
+    return {d0, d1, d2};
+};
 
     std::cout << "inField bricks:" << std::endl;
     for(const auto& b : inField.bricks)
@@ -2330,9 +2318,6 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
         std::cout << "  dev: " << b.location.device;
         std::cout << std::endl;
     }
-
-
-
 
     // create temporary grids consistent for internal rank_to_coords()
     // valid also for 1D and 2D FFTs
