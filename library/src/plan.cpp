@@ -1970,6 +1970,8 @@ static rocfft_field_t MakeFieldDimContiguous(const rocfft_field_t&      field,
     return out;
 }
 
+
+int alan_counter = 0;
 void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     const rocfft_field_t&      inField,
                                     const rocfft_field_t&      outField,
@@ -1997,6 +1999,10 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
     }
     else
     {
+
+    std::cout << "GlobalTranspose called " << alan_counter << " times.\n";
+    alan_counter++; // Increment the global counter
+
         // GlobalTransposeA2A will use MPI_Ialltoall when possible,
         // falling back to MPI_Ialltoallv otherwise.
         GlobalTransposeA2A(
