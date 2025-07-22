@@ -2398,6 +2398,40 @@ std::cout << std::endl;
     outputItems = unpack_ops;
 }
 
+// Given splitDims (of size 2), returns a field where those two dims are split, and the other is contiguous
+rocfft_field_t MakeFieldWithSplit(const rocfft_field_t& base, const std::vector<size_t>& length, const std::vector<size_t>& splitDims)
+{
+    size_t numBricks = base.bricks.size();
+    rocfft_field_t out = base;
+    // Set up splitting logic for two split dims
+    size_t splits[3] = {1,1,1};
+    splits[splitDims[0]] = 2;
+    splits[splitDims[1]] = numBricks / 2;
+    for(size_t i = 0; i < numBricks; ++i)
+    {
+        auto& brick = out.bricks[i];
+        std::fill(brick.lower.begin(), brick.lower.end(), 0);
+        brick.upper = length;
+
+        size_t idx0 = i / splits[splitDims[1]];
+        size_t idx1 = i % splits[splitDims[1]];
+        brick.lower[splitDims[0]] = length[splitDims[0]] / splits[splitDims[0]] * idx0;
+        brick.upper[splitDims[0]] = length[splitDims[0]] / splits[splitDims[0]] * (idx0+1);
+        brick.lower[splitDims[1]] = length[splitDims[1]] / splits[splitDims[1]] * idx1;
+        brick.upper[splitDims[1]] = length[splitDims[1]] / splits[splitDims[1]] * (idx1+1);
+
+        // Strides logic (reused from MakeFieldDimContiguous)
+        auto brickLength = brick.length();
+        size_t dist = 1;
+        for(size_t s = 0; s < brick.stride.size(); ++s)
+        {
+            brick.stride[s] = dist;
+            dist *= brickLength[s];
+        }
+    }
+    return out;
+}
+
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
     const auto local_comm_rank = get_local_comm_rank();
@@ -2405,6 +2439,10 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // keep track of how many transposes we've done so we can log
     // distinct messages about each one
     size_t transposeNumber = 0;
+
+    // try to use intermediate pencil-to-pencil decompositions for better
+    // scalability, flag available for tunning later on
+    bool use_intermediate_slabs = false;
 
     // currently, can only optimize c2c
     if(transformType != rocfft_transform_type_complex_forward
@@ -2452,6 +2490,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     inputFFTBufs.reserve(desc.inFields.front().bricks.size());
     std::vector<TempBufferLease> inputTemp;
     inputTemp.reserve(desc.inFields.front().bricks.size());
+    
     for(size_t inBrickIdx = 0; inBrickIdx < desc.inFields.front().bricks.size(); ++inBrickIdx)
     {
         const auto& inBrick = desc.inFields.front().bricks[inBrickIdx];
@@ -2465,77 +2504,186 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
-    // now transpose non-contiguous dims to be contiguous and
-    // transform them too
-    std::vector<BufferPtr>       transposeInputBufs = inputFFTBufs;
-    std::vector<TempBufferLease> transposeOutputTemp;
-    std::vector<BufferPtr>       transposeOutputBufs;
-    auto                         transposeInputAntecedents = inputFFTItems;
-    std::vector<size_t>          midFFTItems               = inputFFTItems;
-    rocfft_field_t               transposedField;
-
-    auto lengthsWithBatch = lengths;
-    lengthsWithBatch.push_back(batch);
-    for(auto dimIdx : nonContiguousDims)
+    if(use_intermediate_slabs)
     {
-        // transpose so this dim is contiguous
-        transposedField = MakeFieldDimContiguous(desc.inFields.front(), lengthsWithBatch, dimIdx);
+        // next, transpose non-contiguous dims to be contiguous and
+        // transform them too
+        std::vector<BufferPtr>       transposeInputBufs = inputFFTBufs;
+        std::vector<TempBufferLease> transposeOutputTemp;
+        std::vector<BufferPtr>       transposeOutputBufs;
+        auto                         transposeInputAntecedents = inputFFTItems;
+        std::vector<size_t>          midFFTItems               = inputFFTItems;
+        rocfft_field_t               transposedField;
 
-        // allocate bricks to store the transposed data
-        for(auto& b : transposedField.bricks)
+        auto lengthsWithBatch = lengths;
+        lengthsWithBatch.push_back(batch);
+
+        for(auto dimIdx : nonContiguousDims)
         {
-            transposeOutputTemp.emplace_back(
-                tempBuffers, local_comm_rank, b.location, b.count_elems(), elem_size);
-            transposeOutputBufs.emplace_back(BufferPtr::temp(transposeOutputTemp.back().data()));
+            // transpose so this dim is contiguous
+            transposedField = MakeFieldDimContiguous(desc.inFields.front(), lengthsWithBatch, dimIdx);
+
+            // allocate bricks to store the transposed data
+            for(auto& b : transposedField.bricks)
+            {
+                transposeOutputTemp.emplace_back(
+                    tempBuffers, local_comm_rank, b.location, b.count_elems(), elem_size);
+                transposeOutputBufs.emplace_back(BufferPtr::temp(transposeOutputTemp.back().data()));
+            }
+
+            std::vector<size_t> transposeItems;
+            GlobalTranspose(elem_size,
+                            desc.inFields.front(),
+                            transposedField,
+                            transposeInputBufs,
+                            transposeOutputBufs,
+                            transposeInputAntecedents,
+                            transposeItems,
+                            transposeNumber++);
+
+            // now dimIdx dimension is contiguous on all bricks
+            midFFTItems.clear();
+            C2CField(transposedField,
+                    {dimIdx},
+                    transposeOutputBufs,
+                    transposeOutputBufs,
+                    transposeItems,
+                    midFFTItems);
+
+            // next iteration of loop will depend on these fft items and
+            // work on the output we just produced
+            transposeInputAntecedents = midFFTItems;
+            transposeInputBufs        = transposeOutputBufs;
+            std::swap(transposeOutputTemp, inputTemp);
+            transposeOutputTemp.clear();
+            transposeOutputBufs.clear();
         }
 
-        std::vector<size_t> transposeItems;
+        // transpose data to output layout and transform along remaining dimensions
+        std::vector<BufferPtr> outputBufs
+            = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
+        std::vector<size_t> finalTransposeItems;
+        std::vector<size_t> finalFFTItems;
         GlobalTranspose(elem_size,
-                        desc.inFields.front(),
-                        transposedField,
+                        transposedField.bricks.empty() ? desc.inFields.front() : transposedField,
+                        desc.outFields.front(),
                         transposeInputBufs,
-                        transposeOutputBufs,
-                        transposeInputAntecedents,
-                        transposeItems,
+                        outputBufs,
+                        midFFTItems,
+                        finalTransposeItems,
                         transposeNumber++);
+        C2CField(desc.outFields.front(),
+                contiguousOutputDims,
+                outputBufs,
+                outputBufs,
+                finalTransposeItems,
+                finalFFTItems);
+    }
+    else // pencil-to-pencil decomposition
+    {
+        // assume: input FFTs for initially contiguous dims have already been done above.
+        // at this point:
+        // - inputFFTBufs holds buffers with FFTs along input-contiguous dims
+        // - inputFFTItems holds their plan item IDs
+        // - nonContiguousDims holds the order we want to traverse
+        //
+        // we'll iterate over the nonContiguousDims, at each step:
+        // - transpose to make current dim contiguous
+        // - FFT along that dim
+        // - use result as input to next step
 
-        // now dimIdx dimension is contiguous on all bricks
-        midFFTItems.clear();
-        C2CField(transposedField,
-                 {dimIdx},
-                 transposeOutputBufs,
-                 transposeOutputBufs,
-                 transposeItems,
-                 midFFTItems);
+        std::vector<BufferPtr>       currentInputBufs = inputFFTBufs;
+        auto                         currentInputAntecedents = inputFFTItems;
+        std::vector<TempBufferLease> tempLeases;
+        std::vector<BufferPtr>       tempBufs;
 
-        // next iteration of loop will depend on these fft items and
-        // work on the output we just produced
-        transposeInputAntecedents = midFFTItems;
-        transposeInputBufs        = transposeOutputBufs;
-        std::swap(transposeOutputTemp, inputTemp);
-        transposeOutputTemp.clear();
-        transposeOutputBufs.clear();
+        // for handling brick layouts
+        rocfft_field_t currentField = desc.inFields.front();
+        rocfft_field_t nextField;
+        std::vector<size_t> fftItems;
+
+        auto lengthsWithBatch = lengths;
+        lengthsWithBatch.push_back(batch);
+
+        for(auto dimIdx : nonContiguousDims)
+        {
+            // transpose to make this dimension contiguous
+            nextField = MakeFieldDimContiguous(currentField, lengthsWithBatch, dimIdx);
+
+            tempLeases.clear();
+            tempBufs.clear();
+
+            // allocate temp buffers for new field bricks
+            for(size_t b = 0; b < nextField.bricks.size(); ++b)
+            {
+                tempLeases.emplace_back(
+                    tempBuffers, local_comm_rank, nextField.bricks[b].location, nextField.bricks[b].count_elems(), elem_size
+                );
+                tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
+            }
+
+            std::vector<size_t> transposeItems;
+            GlobalTranspose(
+                elem_size,
+                currentField,
+                nextField,
+                currentInputBufs,
+                tempBufs,
+                currentInputAntecedents,
+                transposeItems,
+                dimIdx // use dimIdx as the itemGroup identifier
+            );
+
+            // FFT along the just-made-contiguous dim
+            fftItems.clear();
+            C2CField(
+                nextField,
+                {dimIdx},
+                tempBufs,
+                tempBufs,        // in-place on the temp buffer
+                transposeItems,  // depends on transpose finishing
+                fftItems
+            );
+
+            // prepare for next step
+            currentField            = nextField;
+            currentInputBufs        = tempBufs;
+            currentInputAntecedents = fftItems;
+            // note that tempLeases persists for the lifetime of tempBufs
+        }
+
+        // after last step need to transpose to final output layout and finish with any remaining FFTs
+        std::vector<BufferPtr> outputBufs = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
+        std::vector<size_t> finalTransposeItems;
+        std::vector<size_t> finalFFTItems;
+
+        // final transpose (from currentField to outputField)
+        GlobalTranspose(
+            elem_size,
+            currentField,
+            desc.outFields.front(),
+            currentInputBufs,
+            outputBufs,
+            currentInputAntecedents,
+            finalTransposeItems,
+            /*itemGroup=*/"final"
+        );
+
+        // if there are any output-contiguous dims that weren't handled yet (should only be those in contiguousOutputDims),
+        // do the last local FFT(s) now
+        if(!contiguousOutputDims.empty())
+        {
+            C2CField(
+                desc.outFields.front(),
+                contiguousOutputDims,
+                outputBufs,
+                outputBufs,
+                finalTransposeItems,
+                finalFFTItems
+            );
+        }
     }
 
-    // transpose data to output layout and transform along remaining dimensions
-    std::vector<BufferPtr> outputBufs
-        = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
-    std::vector<size_t> finalTransposeItems;
-    std::vector<size_t> finalFFTItems;
-    GlobalTranspose(elem_size,
-                    transposedField.bricks.empty() ? desc.inFields.front() : transposedField,
-                    desc.outFields.front(),
-                    transposeInputBufs,
-                    outputBufs,
-                    midFFTItems,
-                    finalTransposeItems,
-                    transposeNumber++);
-    C2CField(desc.outFields.front(),
-             contiguousOutputDims,
-             outputBufs,
-             outputBufs,
-             finalTransposeItems,
-             finalFFTItems);
     return true;
 }
 
