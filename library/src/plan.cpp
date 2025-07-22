@@ -3082,7 +3082,7 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
                 // multi-device was not requested, or we can't optimize for
                 // that case), fall back to single-device plan
 
-                std::cout << "build optimize was not possible " << endl;
+                std::cout << "build optimize was not possible " << std::endl;
 
                 NodeMetaData rootPlanData(nullptr);
                 set_rootplan_params(plan, rootPlanData);
