@@ -1007,7 +1007,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
 #ifdef ROCFFT_MPI_ENABLE
 
-std::cout <<  "uniform_counts inside ExecuteAsync"
+std::cout <<  "uniform_counts inside ExecuteAsync" << std::endl;
 std::cout << "uniform_counts: " << uniform_counts << ", use_subcomm: " << use_subcomm << std::endl;
 std::cout << "sendCounts: ";
 for(auto x : sendCounts) std::cout << x << " ";
