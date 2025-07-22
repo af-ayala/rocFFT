@@ -1011,7 +1011,7 @@ std::cout <<  "uniform_counts inside ExecuteAsync" << std::endl;
 std::cout << "uniform_counts: " << uniform_counts << ", use_subcomm: " << use_subcomm << std::endl;
 std::cout << "sendCounts: ";
 for(auto x : sendCounts) std::cout << x << " ";
-std::cout << "\recvCounts: ";
+std::cout << "\n recvCounts: ";
 for(auto x : recvCounts) std::cout << x << " ";
 std::cout << std::endl;
 
