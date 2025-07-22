@@ -2329,10 +2329,10 @@ auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> s
     std::array<int, 3> in_grid  = {1, 1, 1};
     std::array<int, 3> out_grid = {1, 1, 1};
 
-    if(!inField.empty() && !inField[0].bricks.empty())
+    if(!inField[0].bricks.empty())
         in_grid = infer_grid_from_bricks(inField[0].bricks);
 
-    if(!outField.empty() && !outField[0].bricks.empty())
+    if(!outField[0].bricks.empty())
         out_grid = infer_grid_from_bricks(outField[0].bricks);
 
     std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2] << std::endl;
