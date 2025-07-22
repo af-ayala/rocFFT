@@ -2294,40 +2294,40 @@ auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> s
 };
 
 
-    std::cout << "inField bricks:" << std::endl;
-    for(const auto& b : inField.bricks)
-    {
-        std::cout << "  lower: ";
-        for(auto v : b.lower) std::cout << v << " ";
-        std::cout << "  upper: ";
-        for(auto v : b.upper) std::cout << v << " ";
-        std::cout << "  rank: " << b.location.comm_rank;
-        std::cout << "  dev: " << b.location.device;
-        std::cout << std::endl;
-    }
+    // std::cout << "inField bricks:" << std::endl;
+    // for(const auto& b : inField.bricks)
+    // {
+    //     std::cout << "  lower: ";
+    //     for(auto v : b.lower) std::cout << v << " ";
+    //     std::cout << "  upper: ";
+    //     for(auto v : b.upper) std::cout << v << " ";
+    //     std::cout << "  rank: " << b.location.comm_rank;
+    //     std::cout << "  dev: " << b.location.device;
+    //     std::cout << std::endl;
+    // }
 
-    std::cout << "outField bricks:" << std::endl;
-    for(const auto& b : outField.bricks)
-    {
-        std::cout << "  lower: ";
-        for(auto v : b.lower) std::cout << v << " ";
-        std::cout << "  upper: ";
-        for(auto v : b.upper) std::cout << v << " ";
-        std::cout << "  rank: " << b.location.comm_rank;
-        std::cout << "  dev: " << b.location.device;
-        std::cout << std::endl;
-    }
+    // std::cout << "outField bricks:" << std::endl;
+    // for(const auto& b : outField.bricks)
+    // {
+    //     std::cout << "  lower: ";
+    //     for(auto v : b.lower) std::cout << v << " ";
+    //     std::cout << "  upper: ";
+    //     for(auto v : b.upper) std::cout << v << " ";
+    //     std::cout << "  rank: " << b.location.comm_rank;
+    //     std::cout << "  dev: " << b.location.device;
+    //     std::cout << std::endl;
+    // }
 
     // create temporary grids consistent for internal rank_to_coords()
     // valid also for 1D and 2D FFTs
     std::array<int, 3> in_grid  = {1, 1, 1};
     std::array<int, 3> out_grid = {1, 1, 1};
 
-    if(!desc.inFields.empty() && !desc.inFields[0].bricks.empty())
-        in_grid = infer_grid_from_bricks(desc.inFields[0].bricks);
+    if(!inField.empty() && !inField[0].bricks.empty())
+        in_grid = infer_grid_from_bricks(inField[0].bricks);
 
-    if(!desc.outFields.empty() && !desc.outFields[0].bricks.empty())
-        out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
+    if(!outField.empty() && !outField[0].bricks.empty())
+        out_grid = infer_grid_from_bricks(outField[0].bricks);
 
     std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2] << std::endl;
     std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2] << std::endl;
