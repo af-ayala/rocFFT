@@ -2325,6 +2325,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
         std::cout << std::endl;
     }
 
+    
     std::cout << "desc.inFields[0] bricks:" << std::endl;
     for(const auto& b : desc.inFields[0].bricks)
     {
@@ -3080,7 +3081,7 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
         plan->ValidateFields();
 
         // If we have no input/output fields, then the single ExecPlan is
-        // exactly what we need to do/
+        // exactly what we need to do.
         // FIXME: this check should actually be single-brick/no bricks.
         if(plan->desc.inFields.empty() && plan->desc.outFields.empty())
         {
@@ -3105,6 +3106,8 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
                 // If optimized multi-device was not possible (either because
                 // multi-device was not requested, or we can't optimize for
                 // that case), fall back to single-device plan
+
+                std::cout << "build optimize was not possible " << endl;
 
                 NodeMetaData rootPlanData(nullptr);
                 set_rootplan_params(plan, rootPlanData);
