@@ -2277,42 +2277,60 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                              });
 
     // obtain the original processor grids configuration
-auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
-{
-    std::set<size_t> xvals, yvals, zvals;
-    for(const auto& b : bricks)
+    auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
     {
-        if(b.lower.size() == 4)
+        std::set<size_t> xvals, yvals, zvals;
+        for(const auto& b : bricks)
         {
-            xvals.insert(b.lower[1]); // usually X
-            yvals.insert(b.lower[2]); // usually Y
-            zvals.insert(b.lower[3]); // usually Z
+            if(b.lower.size() == 4)
+            {
+                xvals.insert(b.lower[1]); // usually X
+                yvals.insert(b.lower[2]); // usually Y
+                zvals.insert(b.lower[3]); // usually Z
+            }
+            else if(b.lower.size() == 3)
+            {
+                xvals.insert(b.lower[1]);
+                yvals.insert(b.lower[2]);
+            }
+            else if(b.lower.size() == 2)
+            {
+                xvals.insert(b.lower[1]);
+            }
         }
-        else if(b.lower.size() == 3)
-        {
-            xvals.insert(b.lower[1]);
-            yvals.insert(b.lower[2]);
-        }
-        else if(b.lower.size() == 2)
-        {
-            xvals.insert(b.lower[1]);
-        }
-    }
-    int nx = std::max<int>(1, xvals.size());
-    int ny = std::max<int>(1, yvals.size());
-    int nz = std::max<int>(1, zvals.size());
-    // Fix 2D/1D case: always return 3D grid, pad as 1 if not present
-    return {nx, ny, nz};
-};
+        int nx = std::max<int>(1, xvals.size());
+        int ny = std::max<int>(1, yvals.size());
+        int nz = std::max<int>(1, zvals.size());
+        // Fix 2D/1D case: always return 3D grid, pad as 1 if not present
+        return {nx, ny, nz};
+    };
 
-for(const auto& b : bricks)
-{
-    std::cout << "BRICK lower: ";
-    for(auto v : b.lower)
-        std::cout << v << " ";
-    std::cout << std::endl;
-}
-std::cout << "inferred: nx=" << nx << " ny=" << ny << " nz=" << nz << std::endl;
+
+
+    std::cout << "inField bricks:" << std::endl;
+    for(const auto& b : inField.bricks)
+    {
+        std::cout << "  lower: ";
+        for(auto v : b.lower) std::cout << v << " ";
+        std::cout << "  upper: ";
+        for(auto v : b.upper) std::cout << v << " ";
+        std::cout << "  rank: " << b.location.comm_rank;
+        std::cout << "  dev: " << b.location.device;
+        std::cout << std::endl;
+    }
+
+    std::cout << "outField bricks:" << std::endl;
+    for(const auto& b : outField.bricks)
+    {
+        std::cout << "  lower: ";
+        for(auto v : b.lower) std::cout << v << " ";
+        std::cout << "  upper: ";
+        for(auto v : b.upper) std::cout << v << " ";
+        std::cout << "  rank: " << b.location.comm_rank;
+        std::cout << "  dev: " << b.location.device;
+        std::cout << std::endl;
+    }
+
 
 
 
@@ -2327,15 +2345,8 @@ std::cout << "inferred: nx=" << nx << " ny=" << ny << " nz=" << nz << std::endl;
     if(!desc.outFields.empty() && !desc.outFields[0].bricks.empty())
         out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
 
-    std::cout << "input grid " << std::endl;
-    for(auto e : in_grid)
-        std::cout << e << " , ";
-    std::cout << std::endl;
-
-    std::cout << "output grid " << std::endl;
-    for(auto e : out_grid)
-        std::cout << e << " , ";
-    std::cout << std::endl;
+    std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2] << std::endl;
+    std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2] << std::endl;
 
     // check if optimization with sub-communicators is possible
     bool               use_subcomm = false;
