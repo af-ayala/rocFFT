@@ -946,7 +946,6 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
 {
 
 
-    std::cout <<  ">>>uniform_counts inside can_form_subcommunicators" << std::endl;
     std::cout << ">>>uniform_counts: " << uniform_counts << std::endl;
     std::cout << ">>>send_counts: ";
     for(auto x : send_counts) std::cout << x << " ";
