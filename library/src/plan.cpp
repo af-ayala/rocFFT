@@ -2284,6 +2284,14 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                  return c == recv_counts[0];
                              });
 
+std::cout <<  "uniform_counts inside GlobalTransposeA2A"
+std::cout << "uniform_counts: " << uniform_counts << ", use_subcomm: " << use_subcomm << std::endl;
+std::cout << "send_counts: ";
+for(auto x : send_counts) std::cout << x << " ";
+std::cout << "\nrecv_counts: ";
+for(auto x : nrecv_counts) std::cout << x << " ";
+std::cout << std::endl;
+
     // obtain the original processor grids configuration
     auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
     {
