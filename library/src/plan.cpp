@@ -2442,7 +2442,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     // try to use intermediate pencil-to-pencil decompositions for better
     // scalability, flag available for tunning later on
-    bool use_intermediate_slabs = true;
+    bool use_intermediate_slabs = false;
 
     // currently, can only optimize c2c
     if(transformType != rocfft_transform_type_complex_forward
