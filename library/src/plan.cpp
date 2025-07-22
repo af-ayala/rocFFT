@@ -2279,23 +2279,20 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     // obtain the original processor grids configuration
 auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
 {
-    // Only works if bricks.size() > 0 and lower.size() == 4 for all
     std::set<size_t> xset, yset, zset;
     for(const auto& b : bricks)
     {
-        if(b.lower.size() == 4)
-        {
-            xset.insert(b.lower[1]);
-            yset.insert(b.lower[2]);
-            zset.insert(b.lower[3]);
-        }
-        // else: handle lower dimensions (see below)
+        if(b.lower.size() >= 1) xset.insert(b.lower[0]);
+        if(b.lower.size() >= 2) yset.insert(b.lower[1]);
+        if(b.lower.size() >= 3) zset.insert(b.lower[2]);
+        // ignore batch if present at b.lower[3]
     }
-    int nx = xset.size() > 0 ? xset.size() : 1;
-    int ny = yset.size() > 0 ? yset.size() : 1;
-    int nz = zset.size() > 0 ? zset.size() : 1;
+    int nx = std::max(1, static_cast<int>(xset.size()));
+    int ny = std::max(1, static_cast<int>(yset.size()));
+    int nz = std::max(1, static_cast<int>(zset.size()));
     return {nx, ny, nz};
 };
+
 
     std::cout << "inField bricks:" << std::endl;
     for(const auto& b : inField.bricks)
