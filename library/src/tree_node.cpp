@@ -944,8 +944,8 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
                                              const std::array<int, 3>& in_grid,
                                              const std::array<int, 3>& out_grid)
 {
-
-
+    
+    std::cout << ">>> called within can_form_subcommunicators" << std::endl;
     std::cout << ">>>send_counts: ";
     for(auto x : send_counts) std::cout << x << " ";
     std::cout << "\n >>>recv_counts: ";
@@ -977,6 +977,8 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
             ++changes;
         }
     }
+
+    std::cout << ">>> changes = " << changes << std::endl;
     if(changes != 1)  // only support single-dimension (pencil) redistribution
         return false;
 
