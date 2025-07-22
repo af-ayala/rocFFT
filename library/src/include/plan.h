@@ -188,7 +188,7 @@ struct rocfft_plan_t
     std::vector<size_t> outputLengths;
     size_t              batch = 1;
 
-    // intermediate splitting form multi-process transforms
+    // intermediate splitting for multi-process multi-dimensional transforms
     bool use_intermediate_slabs = false;
 
     rocfft_result_placement placement     = rocfft_placement_inplace;

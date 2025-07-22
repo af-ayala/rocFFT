@@ -944,6 +944,16 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
                                              const std::array<int, 3>& in_grid,
                                              const std::array<int, 3>& out_grid)
 {
+
+
+    std::cout <<  ">>>uniform_counts inside can_form_subcommunicators" << std::endl;
+    std::cout << ">>>uniform_counts: " << uniform_counts << std::endl;
+    std::cout << ">>>send_counts: ";
+    for(auto x : send_counts) std::cout << x << " ";
+    std::cout << "\n >>>recv_counts: ";
+    for(auto x : recv_counts) std::cout << x << " ";
+    std::cout << std::endl;
+
     // check if uniform counts
     if(!std::all_of(send_counts.begin(), send_counts.end(), [&](size_t c){ return c == send_counts[0]; }))
         return false;

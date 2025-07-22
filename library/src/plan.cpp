@@ -2284,13 +2284,13 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                  return c == recv_counts[0];
                              });
 
-std::cout <<  "uniform_counts inside GlobalTransposeA2A" << std::endl;
-std::cout << "uniform_counts: " << uniform_counts << std::endl;
-std::cout << "send_counts: ";
-for(auto x : send_counts) std::cout << x << " ";
-std::cout << "\n recv_counts: ";
-for(auto x : recv_counts) std::cout << x << " ";
-std::cout << std::endl;
+    std::cout <<  "uniform_counts inside GlobalTransposeA2A" << std::endl;
+    std::cout << "uniform_counts: " << uniform_counts << std::endl;
+    std::cout << "send_counts: ";
+    for(auto x : send_counts) std::cout << x << " ";
+    std::cout << "\n recv_counts: ";
+    for(auto x : recv_counts) std::cout << x << " ";
+    std::cout << std::endl;
 
     // obtain the original processor grids configuration
     auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
@@ -2301,7 +2301,6 @@ std::cout << std::endl;
             if(b.lower.size() >= 1) xset.insert(b.lower[0]);
             if(b.lower.size() >= 2) yset.insert(b.lower[1]);
             if(b.lower.size() >= 3) zset.insert(b.lower[2]);
-            // ignore batch if present at b.lower[3]
         }
         int nx = std::max(1, static_cast<int>(xset.size()));
         int ny = std::max(1, static_cast<int>(yset.size()));
@@ -2398,7 +2397,7 @@ std::cout << std::endl;
     outputItems = unpack_ops;
 }
 
-// Given splitDims (of size 2), returns a field where those two dims are split, and the other is contiguous
+// given splitDims (of size 2), returns a field where those two dims are split, and the other is contiguous
 rocfft_field_t MakeFieldWithSplit(const rocfft_field_t& base, const std::vector<size_t>& length, const std::vector<size_t>& splitDims)
 {
     size_t numBricks = base.bricks.size();
