@@ -1994,13 +1994,15 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
     if(rocfft_plan_description_t::multiple_devices_in_rank(inField)
        || rocfft_plan_description_t::multiple_devices_in_rank(outField))
     {
+        std::cout << "GlobalTransposeP2P called " << alan_counter << " times.\n";
+        alan_counter++; // Increment the global counter
         GlobalTransposeP2P(
             elem_size, inField, outField, input, output, inputAntecedents, outputItems, itemGroup);
     }
     else
     {
 
-    std::cout << "GlobalTranspose called " << alan_counter << " times.\n";
+    std::cout << "GlobalTransposeA2A called " << alan_counter << " times.\n";
     alan_counter++; // Increment the global counter
 
         // GlobalTransposeA2A will use MPI_Ialltoall when possible,
