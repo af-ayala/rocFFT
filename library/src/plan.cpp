@@ -2442,7 +2442,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     // try to use intermediate pencil-to-pencil decompositions for better
     // scalability, flag available for tunning later on
-    bool use_intermediate_slabs = false;
+    bool use_intermediate_slabs = true;
 
     // currently, can only optimize c2c
     if(transformType != rocfft_transform_type_complex_forward
@@ -2490,7 +2490,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     inputFFTBufs.reserve(desc.inFields.front().bricks.size());
     std::vector<TempBufferLease> inputTemp;
     inputTemp.reserve(desc.inFields.front().bricks.size());
-    
+
     for(size_t inBrickIdx = 0; inBrickIdx < desc.inFields.front().bricks.size(); ++inBrickIdx)
     {
         const auto& inBrick = desc.inFields.front().bricks[inBrickIdx];
@@ -2631,7 +2631,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 tempBufs,
                 currentInputAntecedents,
                 transposeItems,
-                dimIdx // use dimIdx as the itemGroup identifier
+                transposeNumber++
             );
 
             // FFT along the just-made-contiguous dim
@@ -2666,7 +2666,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             outputBufs,
             currentInputAntecedents,
             finalTransposeItems,
-            /*itemGroup=*/"final"
+            transposeNumber++
         );
 
         // if there are any output-contiguous dims that weren't handled yet (should only be those in contiguousOutputDims),
