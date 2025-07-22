@@ -2284,11 +2284,11 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                  return c == recv_counts[0];
                              });
 
-    std::cout <<  "uniform_counts inside GlobalTransposeA2A" << std::endl;
-    std::cout << "uniform_counts: " << uniform_counts << std::endl;
-    std::cout << "send_counts: ";
+    std::cout <<  "+++ uniform_counts inside GlobalTransposeA2A" << std::endl;
+    std::cout << "+++ uniform_counts: " << uniform_counts << std::endl;
+    std::cout << "+++ send_counts: ";
     for(auto x : send_counts) std::cout << x << " ";
-    std::cout << "\n recv_counts: ";
+    std::cout << "\n +++recv_counts: ";
     for(auto x : recv_counts) std::cout << x << " ";
     std::cout << std::endl;
 
