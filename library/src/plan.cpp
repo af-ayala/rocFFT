@@ -2325,31 +2325,6 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
         std::cout << std::endl;
     }
 
-    
-    std::cout << "desc.inFields[0] bricks:" << std::endl;
-    for(const auto& b : desc.inFields[0].bricks)
-    {
-        std::cout << "  lower: ";
-        for(auto v : b.lower) std::cout << v << " ";
-        std::cout << "  upper: ";
-        for(auto v : b.upper) std::cout << v << " ";
-        std::cout << "  rank: " << b.location.comm_rank;
-        std::cout << "  dev: " << b.location.device;
-        std::cout << std::endl;
-    }
-
-    std::cout << "desc.outFields[0] bricks:" << std::endl;
-    for(const auto& b : desc.outFields[0].bricks)
-    {
-        std::cout << "  lower: ";
-        for(auto v : b.lower) std::cout << v << " ";
-        std::cout << "  upper: ";
-        for(auto v : b.upper) std::cout << v << " ";
-        std::cout << "  rank: " << b.location.comm_rank;
-        std::cout << "  dev: " << b.location.device;
-        std::cout << std::endl;
-    }
-
     // create temporary grids consistent for internal rank_to_coords()
     // valid also for 1D and 2D FFTs
     std::array<int, 3> in_grid  = {1, 1, 1};

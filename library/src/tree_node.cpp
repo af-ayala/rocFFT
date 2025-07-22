@@ -982,12 +982,17 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
 }
 #endif
 
+int alan_kia = 0;
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
                                 void*                 out_buffer[],
                                 rocfft_execution_info info,
                                 size_t                multiPlanIdx)
 {
+
+    std::cout << "ExecuteAsync called " << alan_kia << " times.\n";
+    alan_kia++; // Increment the global counter
+
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
     const size_t num_ranks = plan->get_local_comm_size();
