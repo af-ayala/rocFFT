@@ -2283,46 +2283,69 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                              });
 
     // obtain the original processor grids configuration
-auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
-{
-    std::set<size_t> xset, yset, zset;
-    for(const auto& b : bricks)
+    auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> std::array<int, 3>
     {
-        if(b.lower.size() >= 1) xset.insert(b.lower[0]);
-        if(b.lower.size() >= 2) yset.insert(b.lower[1]);
-        if(b.lower.size() >= 3) zset.insert(b.lower[2]);
-        // ignore batch if present at b.lower[3]
+        std::set<size_t> xset, yset, zset;
+        for(const auto& b : bricks)
+        {
+            if(b.lower.size() >= 1) xset.insert(b.lower[0]);
+            if(b.lower.size() >= 2) yset.insert(b.lower[1]);
+            if(b.lower.size() >= 3) zset.insert(b.lower[2]);
+            // ignore batch if present at b.lower[3]
+        }
+        int nx = std::max(1, static_cast<int>(xset.size()));
+        int ny = std::max(1, static_cast<int>(yset.size()));
+        int nz = std::max(1, static_cast<int>(zset.size()));
+        return {nx, ny, nz};
+    };
+
+    std::cout << "inField bricks:" << std::endl;
+    for(const auto& b : inField.bricks)
+    {
+        std::cout << "  lower: ";
+        for(auto v : b.lower) std::cout << v << " ";
+        std::cout << "  upper: ";
+        for(auto v : b.upper) std::cout << v << " ";
+        std::cout << "  rank: " << b.location.comm_rank;
+        std::cout << "  dev: " << b.location.device;
+        std::cout << std::endl;
     }
-    int nx = std::max(1, static_cast<int>(xset.size()));
-    int ny = std::max(1, static_cast<int>(yset.size()));
-    int nz = std::max(1, static_cast<int>(zset.size()));
-    return {nx, ny, nz};
-};
 
+    std::cout << "outField bricks:" << std::endl;
+    for(const auto& b : outField.bricks)
+    {
+        std::cout << "  lower: ";
+        for(auto v : b.lower) std::cout << v << " ";
+        std::cout << "  upper: ";
+        for(auto v : b.upper) std::cout << v << " ";
+        std::cout << "  rank: " << b.location.comm_rank;
+        std::cout << "  dev: " << b.location.device;
+        std::cout << std::endl;
+    }
 
-    // std::cout << "inField bricks:" << std::endl;
-    // for(const auto& b : inField.bricks)
-    // {
-    //     std::cout << "  lower: ";
-    //     for(auto v : b.lower) std::cout << v << " ";
-    //     std::cout << "  upper: ";
-    //     for(auto v : b.upper) std::cout << v << " ";
-    //     std::cout << "  rank: " << b.location.comm_rank;
-    //     std::cout << "  dev: " << b.location.device;
-    //     std::cout << std::endl;
-    // }
+    std::cout << "desc.inFields[0] bricks:" << std::endl;
+    for(const auto& b : desc.inFields[0].bricks)
+    {
+        std::cout << "  lower: ";
+        for(auto v : b.lower) std::cout << v << " ";
+        std::cout << "  upper: ";
+        for(auto v : b.upper) std::cout << v << " ";
+        std::cout << "  rank: " << b.location.comm_rank;
+        std::cout << "  dev: " << b.location.device;
+        std::cout << std::endl;
+    }
 
-    // std::cout << "outField bricks:" << std::endl;
-    // for(const auto& b : outField.bricks)
-    // {
-    //     std::cout << "  lower: ";
-    //     for(auto v : b.lower) std::cout << v << " ";
-    //     std::cout << "  upper: ";
-    //     for(auto v : b.upper) std::cout << v << " ";
-    //     std::cout << "  rank: " << b.location.comm_rank;
-    //     std::cout << "  dev: " << b.location.device;
-    //     std::cout << std::endl;
-    // }
+    std::cout << "desc.outFields[0] bricks:" << std::endl;
+    for(const auto& b : desc.outFields[0].bricks)
+    {
+        std::cout << "  lower: ";
+        for(auto v : b.lower) std::cout << v << " ";
+        std::cout << "  upper: ";
+        for(auto v : b.upper) std::cout << v << " ";
+        std::cout << "  rank: " << b.location.comm_rank;
+        std::cout << "  dev: " << b.location.device;
+        std::cout << std::endl;
+    }
 
     // create temporary grids consistent for internal rank_to_coords()
     // valid also for 1D and 2D FFTs
@@ -2330,10 +2353,10 @@ auto infer_grid_from_bricks = [](const std::vector<rocfft_brick_t>& bricks) -> s
     std::array<int, 3> out_grid = {1, 1, 1};
 
     if(!inField.bricks.empty())
-        in_grid = infer_grid_from_bricks(inField[0].bricks);
+        in_grid = infer_grid_from_bricks(inField.bricks);
 
     if(!outField.bricks.empty())
-        out_grid = infer_grid_from_bricks(outField[0].bricks);
+        out_grid = infer_grid_from_bricks(outField.bricks);
 
     std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2] << std::endl;
     std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2] << std::endl;
