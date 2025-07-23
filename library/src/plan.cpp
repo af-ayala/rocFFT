@@ -2596,7 +2596,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             std::vector<int> subcomm_vec(subcomm_ranks.begin(), subcomm_ranks.end());
             MPI_Group pencil_group;
             MPI_Group_incl(world_group, subcomm_vec.size(), subcomm_vec.data(), &pencil_group);
-            MPI_Comm_wrapper_t pencil_com;
+            MPI_Comm_wrapper_t pencil_comm;
             MPI_Comm_create(desc.mpi_comm, pencil_group, &pencil_comm);
 
             int in_pencil_comm = (pencil_comm != MPI_COMM_NULL);
