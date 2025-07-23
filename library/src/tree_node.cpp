@@ -944,7 +944,7 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
                                              const std::array<int, 3>& in_grid,
                                              const std::array<int, 3>& out_grid)
 {
-    
+
     std::cout << ">>> called within can_form_subcommunicators" << std::endl;
     std::cout << ">>>send_counts: ";
     for(auto x : send_counts) std::cout << x << " ";
@@ -991,7 +991,7 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
 }
 #endif
 
-int alan_kia = 0;
+int alan_kia = 1;
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
                                 void*                 out_buffer[],

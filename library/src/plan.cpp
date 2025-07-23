@@ -1972,7 +1972,7 @@ static rocfft_field_t MakeFieldDimContiguous(const rocfft_field_t&      field,
 }
 
 
-int alan_counter = 0;
+int alan_counter = 1;
 void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     const rocfft_field_t&      inField,
                                     const rocfft_field_t&      outField,
