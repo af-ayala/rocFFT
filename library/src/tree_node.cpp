@@ -1015,12 +1015,12 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
 
-// #ifdef ROCFFT_MPI_ENABLE
+#ifdef ROCFFT_MPI_ENABLE
 
-MPI_Comm_wrapper_t transpose_comm = subcomm.valid() ? subcomm.get() : plan->desc.mpi_comm;
+MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
 
 std::cout <<  "uniform_counts inside ExecuteAsync" << std::endl;
-std::cout << "uniform_counts: " << uniform_counts << ", use_subcomm: " << use_subcomm << std::endl;
+std::cout << "uniform_counts: " << uniform_counts << std::endl;
 std::cout << "sendCounts: ";
 for(auto x : sendCounts) std::cout << x << " ";
 std::cout << "\n recvCounts: ";
