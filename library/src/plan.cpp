@@ -2504,12 +2504,13 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
+
 if(rank == 3 && !use_intermediate_slabs)
 {
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
-    // Start with current field/buffers as after input FFTs
+    // Start with current field/buffers after contiguous FFTs
     rocfft_field_t currentField = desc.inFields.front();
     std::vector<BufferPtr> currentBufs = inputFFTBufs;
     std::vector<size_t> currentAntecedents = inputFFTItems;
@@ -2519,12 +2520,33 @@ if(rank == 3 && !use_intermediate_slabs)
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
 
-    // For each un-FFT'd dimension, make it pencilized and FFT
+    // We want to match the user’s requested output grid as soon as possible
+    // and only transpose as needed
+
+    // Do pencilization+FFT for each non-FFT’d direction
     for(int axis = 0; axis < 3; ++axis)
     {
         if(!fft_done[axis])
         {
-            // Pencilize in {already FFT'd} + axis
+            // Target: Is output already pencils in this direction?
+            bool output_has_pencils = true;
+            for(const auto& brick : desc.outFields.front().bricks)
+            {
+                if((brick.upper[axis] - brick.lower[axis]) != lengths[axis])
+                {
+                    output_has_pencils = false;
+                    break;
+                }
+            }
+
+            if(output_has_pencils)
+            {
+                // If output already pencils, we can skip pencilizing again and just transpose to output!
+                // Jump out of loop early
+                break;
+            }
+
+            // Otherwise, pencilize by splitting along all FFTed axes and the current one
             std::vector<size_t> splitDims;
             for(int d = 0; d < 3; ++d)
                 if(fft_done[d] || d == axis)
@@ -2584,6 +2606,7 @@ if(rank == 3 && !use_intermediate_slabs)
 
     if(need_final_transpose)
     {
+        // Final transpose to user grid
         GlobalTranspose(
             elem_size,
             currentField,
@@ -2597,11 +2620,29 @@ if(rank == 3 && !use_intermediate_slabs)
     }
     else
     {
-        // No-op: just forward antecedents
         finalTransposeItems = currentAntecedents;
     }
-    // Done: outputBufs now holds output data in omgrid, all 3 FFTs done.
+
+    // Last check: Are there any FFTs left to perform in the output grid?
+    std::vector<size_t> outFFTDims;
+    for(auto d : contiguousOutputDims)
+        if(!fft_done[d])
+            outFFTDims.push_back(d);
+
+    if(!outFFTDims.empty())
+    {
+        std::vector<size_t> finalFFTItems;
+        C2CField(
+            desc.outFields.front(),
+            outFFTDims,
+            outputBufs,
+            outputBufs,
+            finalTransposeItems,
+            finalFFTItems
+        );
+    }
 }
+
 
 
     else
