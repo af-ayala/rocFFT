@@ -1027,7 +1027,7 @@ std::cout << std::endl;
 
     MPI_Request request;
 
-    if(uniform_counts && use_subcomm)
+    if(uniform_counts)
     {
         std::cout << "Using subcommunicator-based MPI_Ialltoall\n";
 
