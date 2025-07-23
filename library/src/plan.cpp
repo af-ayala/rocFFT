@@ -2509,9 +2509,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 // to delete 
     std::array<int, 3> alan_indecgrid  = {1, 1, 1};
     std::array<int, 3> alan_outdecgrid = {1, 1, 1};
-    if(!inField.bricks.empty())
         alan_indecgrid = infer_grid_from_bricks(desc.inFields[0].bricks);
-    if(!outField.bricks.empty())
         alan_outdecgrid = infer_grid_from_bricks(desc.outFields[0].bricks);
     std::cout << "--descingrid desc.inFields[0]: " << alan_indecgrid[0] << " " << alan_indecgrid[1] << " " << alan_indecgrid[2] << std::endl;
     std::cout << "--descoutgrid desc.outFields[0]: " << alan_outdecgrid[0] << " " << alan_outdecgrid[1] << " " << alan_outdecgrid[2] << std::endl;
