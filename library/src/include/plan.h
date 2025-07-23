@@ -117,6 +117,21 @@ struct rocfft_brick_t
     std::string str() const;
 };
 
+inline std::array<int, 3> infer_grid_from_bricks(const std::vector<rocfft_brick_t>& bricks)
+{
+    std::set<size_t> xset, yset, zset;
+    for(const auto& b : bricks)
+    {
+        if(b.lower.size() >= 1) xset.insert(b.lower[0]);
+        if(b.lower.size() >= 2) yset.insert(b.lower[1]);
+        if(b.lower.size() >= 3) zset.insert(b.lower[2]);
+    }
+    int nx = std::max(1, static_cast<int>(xset.size()));
+    int ny = std::max(1, static_cast<int>(yset.size()));
+    int nz = std::max(1, static_cast<int>(zset.size()));
+    return {nx, ny, nz};
+}
+
 struct rocfft_field_t
 {
     std::vector<rocfft_brick_t> bricks;
