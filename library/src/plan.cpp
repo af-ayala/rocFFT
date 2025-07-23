@@ -2490,18 +2490,23 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
 
-// to delete 
-    std::array<int, 3> alan_indecgrid  = {1, 1, 1};
-    std::array<int, 3> alan_outdecgrid = {1, 1, 1};
-        alan_indecgrid = infer_grid_from_bricks(desc.inFields[0].bricks);
-        alan_outdecgrid = infer_grid_from_bricks(desc.outFields[0].bricks);
-    std::cout << "--descingrid desc.inFields[0]: " << alan_indecgrid[0] << " " << alan_indecgrid[1] << " " << alan_indecgrid[2] << std::endl;
-    std::cout << "--descoutgrid desc.outFields[0]: " << alan_outdecgrid[0] << " " << alan_outdecgrid[1] << " " << alan_outdecgrid[2] << std::endl;
-// to delete  until here
+// Get processor grid from bricks for input and output
+std::array<int, 3> in_grid  = infer_grid_from_bricks(desc.inFields[0].bricks);
+std::array<int, 3> out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
 
+std::cout << "--descingrid desc.inFields[0]: "
+          << in_grid[0] << " " << in_grid[1] << " " << in_grid[2] << std::endl;
+std::cout << "--descoutgrid desc.outFields[0]: "
+          << out_grid[0] << " " << out_grid[1] << " " << out_grid[2] << std::endl;
 
+// Count number of split dims (dim > 1) in input and output grids
+const int num_split_dims_in  = std::count_if(in_grid.begin(),  in_grid.end(),  [](int n){ return n > 1; });
+const int num_split_dims_out = std::count_if(out_grid.begin(), out_grid.end(), [](int n){ return n > 1; });
 
-if(rank == 3 && !use_intermediate_slabs)
+std::cout << "--num_split_dims_in: "  << num_split_dims_in << std::endl;
+std::cout << "--num_split_dims_out: " << num_split_dims_out << std::endl;
+
+if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
 {
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
