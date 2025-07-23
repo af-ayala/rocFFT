@@ -2484,6 +2484,7 @@ std::cout << "--num_split_dims_out: " << num_split_dims_out << std::endl;
 
 
 
+
 if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
 {
     auto lengthsWithBatch = lengths;
@@ -2493,41 +2494,32 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     std::vector<BufferPtr> currentBufs = inputFFTBufs;
     std::vector<size_t> currentAntecedents = inputFFTItems;
 
-    // At the start, FFT all input-contiguous dims
     std::vector<int> fft_done(3, 0);
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
 
-    // Find remaining dims to pencilize (in order of desired output split)
     std::vector<int> pencilize_axes;
     for(int axis = 0; axis < 3; ++axis)
     {
-        // If user output splits this axis, but input doesn't, we must transpose
         bool input_split = DimensionSplitInField(lengths[axis], axis, desc.inFields.front());
         bool output_split = DimensionSplitInField(lengths[axis], axis, desc.outFields.front());
         if(output_split && !input_split)
             pencilize_axes.push_back(axis);
     }
 
-    // For each pencilization step (there should be at most 2 in PPP)
     for(size_t step = 0; step < pencilize_axes.size(); ++step)
     {
         int pencil_axis = pencilize_axes[step];
-
-        // Compute split dims for new pencil: all previous split axes + this one
         std::vector<size_t> splitDims;
         for(int d = 0; d < 3; ++d)
         {
-            // Use all previously split axes + this one
             if(fft_done[d] || d == pencil_axis)
                 splitDims.push_back(d);
         }
         rocfft_field_t nextField = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
 
-        // Only transpose if necessary
         if(currentField.bricks != nextField.bricks)
         {
-            // Allocate temp buffers
             std::vector<TempBufferLease> tempLeases;
             std::vector<BufferPtr> tempBufs;
             for(size_t b = 0; b < nextField.bricks.size(); ++b)
@@ -2539,7 +2531,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
             }
 
-            // ---- NEW: Create subcommunicator for this pencil step ----
+            // ---- NEW: Robust subcomm creation with mapping ----
             std::array<int,3> grid_in  = infer_grid_from_bricks(currentField.bricks);
             std::array<int,3> grid_out = infer_grid_from_bricks(nextField.bricks);
 
@@ -2548,16 +2540,92 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 if(grid_in[d] != grid_out[d])
                     split_dim = d;
 
+            std::cout << "split dim is " << split_dim << std::endl;
+
             MPI_Comm_wrapper_t pencil_subcomm;
+            bool use_pencil_subcomm = false;
+
             if(split_dim >= 0)
             {
-                int rank;
-                MPI_Comm_rank(desc.mpi_comm, &rank);
-                int color = CommAllToAll::calculate_color_for_subcomm(rank, grid_in, split_dim);
-                pencil_subcomm.split(desc.mpi_comm, color, rank);
+                int world_rank;
+                MPI_Comm_rank(desc.mpi_comm, &world_rank);
+                int color = CommAllToAll::calculate_color_for_subcomm(world_rank, grid_in, split_dim);
+                pencil_subcomm.split(desc.mpi_comm, color, world_rank);
+
+                int local_comm_rank, local_comm_size;
+                MPI_Comm_rank(pencil_subcomm, &local_comm_rank);
+                MPI_Comm_size(pencil_subcomm, &local_comm_size);
+
+                // --- Build global-to-local rank mapping for this subcomm ---
+                std::vector<int> subcomm_global_ranks(local_comm_size, -1);
+                int my_global_rank;
+                MPI_Comm_rank(desc.mpi_comm, &my_global_rank);
+                for(int grank = 0, found = 0; found < local_comm_size; ++grank)
+                {
+                    int g_color = CommAllToAll::calculate_color_for_subcomm(grank, grid_in, split_dim);
+                    if(g_color == color)
+                    {
+                        subcomm_global_ranks[found] = grank;
+                        found++;
+                    }
+                }
+                // Print subcomm global rank mapping for debug:
+                std::cout << "Pencil subcomm (split_dim=" << split_dim << ", color=" << color << "): ";
+                for(int i = 0; i < local_comm_size; ++i)
+                    std::cout << subcomm_global_ranks[i] << " ";
+                std::cout << "\nLocal rank: " << local_comm_rank << " Global rank: " << my_global_rank << std::endl;
+
+                // --- Build send/recv counts indexed by local subcomm rank ---
+                std::vector<size_t> send_counts(local_comm_size, 0);
+                std::vector<size_t> recv_counts(local_comm_size, 0);
+
+                for(size_t inBrickIdx = 0; inBrickIdx < currentField.bricks.size(); ++inBrickIdx)
+                {
+                    const auto& inBrick = currentField.bricks[inBrickIdx];
+                    // Find local rank for global inBrick location
+                    auto it_in = std::find(subcomm_global_ranks.begin(), subcomm_global_ranks.end(), inBrick.location.comm_rank);
+                    if(it_in == subcomm_global_ranks.end()) continue;
+                    int in_local = std::distance(subcomm_global_ranks.begin(), it_in);
+
+                    for(size_t outBrickIdx = 0; outBrickIdx < nextField.bricks.size(); ++outBrickIdx)
+                    {
+                        const auto& outBrick = nextField.bricks[outBrickIdx];
+                        auto it_out = std::find(subcomm_global_ranks.begin(), subcomm_global_ranks.end(), outBrick.location.comm_rank);
+                        if(it_out == subcomm_global_ranks.end()) continue;
+                        int out_local = std::distance(subcomm_global_ranks.begin(), it_out);
+
+                        auto intersection = inBrick.intersect(outBrick);
+                        if(intersection.empty())
+                            continue;
+
+                        const auto elems = intersection.count_elems();
+                        if(in_local == local_comm_rank)
+                            send_counts[out_local] += elems;
+                        if(out_local == local_comm_rank)
+                            recv_counts[in_local] += elems;
+                    }
+                }
+                // 3. Check uniformity
+                auto all_eq = [](const std::vector<size_t>& v)
+                {
+                    return !v.empty() && std::all_of(v.begin(), v.end(), [&](size_t c){ return c == v[0]; });
+                };
+                std::cout << "send_counts: ";
+                for(auto x : send_counts) std::cout << x << " ";
+                std::cout << "recv_counts: ";
+                for(auto x : recv_counts) std::cout << x << " ";
+                std::cout << std::endl;
+                if(all_eq(send_counts) && all_eq(recv_counts))
+                {
+                    use_pencil_subcomm = true;
+                }
+                std::cout << "use_pencil_subcomm? " << (use_pencil_subcomm ? "YES" : "NO") << std::endl;
             }
 
-            // ---- Transpose using this subcomm ----
+            if(pencil_subcomm)
+                std::cout<<" pencil_subcomm is valid" << std::endl;
+
+            // ---- Transpose using this subcomm if possible ----
             std::vector<size_t> transposeItems;
             GlobalTranspose(
                 elem_size,
@@ -2568,16 +2636,14 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 currentAntecedents,
                 transposeItems,
                 transposeNumber++,
-                std::move(pencil_subcomm)    // <--- NEW: pass subcomm here
+                (use_pencil_subcomm ? std::move(pencil_subcomm) : MPI_Comm_wrapper_t{})
             );
             currentField = nextField;
             currentBufs = tempBufs;
             currentAntecedents = transposeItems;
         }
 
-        // -----
-        // Find which axis is **contiguous** now (that is, NOT split)
-        // The only axis where, for all local bricks, brick.upper[axis]-brick.lower[axis] == global lengths[axis]
+        // ---- Find which axis is **contiguous** now (that is, NOT split)
         int contiguous_axis = -1;
         for(int d = 0; d < 3; ++d)
         {
@@ -2593,7 +2659,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         }
         assert(contiguous_axis >= 0);
 
-        // Compute FFT along the new contiguous axis
         std::vector<size_t> fftItems;
         C2CField(
             currentField,
@@ -2613,8 +2678,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     std::vector<size_t> finalTransposeItems;
     if(need_final_transpose)
     {
-        // Optionally, you could also infer & create a subcomm for this last step
-        // For now, just call as before:
         GlobalTranspose(
             elem_size,
             currentField,
@@ -2624,14 +2687,12 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             currentAntecedents,
             finalTransposeItems,
             transposeNumber++
-            // , pencil_subcomm (if you wish)
         );
         currentBufs = outputBufs;
         currentAntecedents = finalTransposeItems;
         currentField = desc.outFields.front();
     }
 
-    // Any FFTs left to do in output grid?
     std::vector<size_t> outFFTDims;
     for(auto d : contiguousOutputDims)
         if(!fft_done[d])
@@ -2650,6 +2711,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         );
     }
 }
+
 
 
 
