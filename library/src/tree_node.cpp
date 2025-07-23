@@ -1015,7 +1015,9 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
 
-#ifdef ROCFFT_MPI_ENABLE
+// #ifdef ROCFFT_MPI_ENABLE
+
+MPI_Comm_wrapper_t transpose_comm = subcomm.valid() ? subcomm.get() : plan->desc.mpi_comm;
 
 std::cout <<  "uniform_counts inside ExecuteAsync" << std::endl;
 std::cout << "uniform_counts: " << uniform_counts << ", use_subcomm: " << use_subcomm << std::endl;
@@ -1029,7 +1031,7 @@ std::cout << std::endl;
 
     MPI_Request request;
 
-    if(uniform_counts && use_subcomm)
+    if (uniform_counts && subcomm.valid())
     {
         std::cout << "Using subcommunicator-based MPI_Ialltoall\n";
 
@@ -1044,7 +1046,7 @@ std::cout << std::endl;
                                           recvBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
                                           MPI_CHAR,
-                                          subcomm,
+                                          transpose_comm,
                                           &request);
 
         if(mpiret != MPI_SUCCESS)
@@ -1074,7 +1076,7 @@ std::cout << std::endl;
                                           recvBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
                                           MPI_CHAR,
-                                          plan->desc.mpi_comm,
+                                          transpose_comm,
                                           &request);
 
         if(mpiret != MPI_SUCCESS)
@@ -1122,7 +1124,7 @@ std::cout << std::endl;
                                            intRecvCounts.data(),
                                            intRecvOffsets.data(),
                                            rocfft_type_to_mpi_type(precision, arrayType),
-                                           plan->desc.mpi_comm,
+                                           transpose_comm,
                                            &request);
 
         if(mpiret != MPI_SUCCESS)

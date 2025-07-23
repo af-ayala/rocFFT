@@ -1980,7 +1980,8 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     std::vector<BufferPtr>&    output,
                                     const std::vector<size_t>& inputAntecedents,
                                     std::vector<size_t>&       outputItems,
-                                    size_t                     transposeNumber)
+                                    size_t                     transposeNumber,
+                                   MPI_Comm_wrapper_t&&       subcomm)
 {
     // All-to-all transpose is preferred as it's faster. This requires
     // that each rank have a single base pointer to send/receive with
@@ -2009,7 +2010,7 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
         // GlobalTransposeA2A will use MPI_Ialltoall when possible,
         // falling back to MPI_Ialltoallv otherwise.
         GlobalTransposeA2A(
-            elem_size, inField, outField, input, output, inputAntecedents, outputItems, itemGroup);
+            elem_size, inField, outField, input, output, inputAntecedents, outputItems, itemGroup, std::move(subcomm));
     }
 }
 
@@ -2119,7 +2120,8 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                        std::vector<BufferPtr>&    output,
                                        const std::vector<size_t>& inputAntecedents,
                                        std::vector<size_t>&       outputItems,
-                                       const std::string&         itemGroup)
+                                       const std::string&         itemGroup,
+                                    MPI_Comm_wrapper_t&&       subcomm)
 {
     const auto local_comm_rank = get_local_comm_rank();
     const auto local_comm_size = get_local_comm_size();
@@ -2331,31 +2333,6 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2] << std::endl;
     std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2] << std::endl;
 
-
-    // check if optimization with sub-communicators is possible
-    bool               use_subcomm = false;
-    MPI_Comm_wrapper_t subcomm;
-
-    if(uniform_counts
-       && CommAllToAll::can_form_subcommunicators(
-           desc.mpi_comm, send_counts, recv_counts, in_grid, out_grid))
-    {
-        int comm_size, rank;
-        MPI_Comm_size(desc.mpi_comm, &comm_size);
-        MPI_Comm_rank(desc.mpi_comm, &rank);
-
-        // Find split_dim (the only dimension which differs)
-        int split_dim = -1;
-        for(int i = 0; i < 3; ++i)
-            if(in_grid[i] != out_grid[i])
-                split_dim = i;
-
-        int color = CommAllToAll::calculate_color_for_subcomm(rank, in_grid, split_dim);
-
-        subcomm.split(desc.mpi_comm, color, rank);
-        use_subcomm = true;
-    }
-
     // add the all-to-all op itself, which depends on pack ops
     auto alltoall_ptr = std::make_unique<CommAllToAll>(precision,
                                                        desc.inArrayType,
@@ -2366,7 +2343,6 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                                        BufferPtr::temp(send_buf.data()),
                                                        BufferPtr::temp(recv_buf.data()),
                                                        uniform_counts,
-                                                       use_subcomm,
                                                        std::move(subcomm));
 
     auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
@@ -2490,7 +2466,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
 
-// Get processor grid from bricks for input and output
+// get processor grid from bricks for input and output
 std::array<int, 3> in_grid  = infer_grid_from_bricks(desc.inFields[0].bricks);
 std::array<int, 3> out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
 
@@ -2499,12 +2475,13 @@ std::cout << "--descingrid desc.inFields[0]: "
 std::cout << "--descoutgrid desc.outFields[0]: "
           << out_grid[0] << " " << out_grid[1] << " " << out_grid[2] << std::endl;
 
-// Count number of split dims (dim > 1) in input and output grids
+// count number of split dims in input and output grids
 const int num_split_dims_in  = std::count_if(in_grid.begin(),  in_grid.end(),  [](int n){ return n > 1; });
 const int num_split_dims_out = std::count_if(out_grid.begin(), out_grid.end(), [](int n){ return n > 1; });
 
 std::cout << "--num_split_dims_in: "  << num_split_dims_in << std::endl;
 std::cout << "--num_split_dims_out: " << num_split_dims_out << std::endl;
+
 
 if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
 {
@@ -2561,7 +2538,74 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
             }
 
-            // Transpose
+            // ---- NEW: Try to create subcommunicator for this pencil step ----
+            std::array<int,3> grid_in  = infer_grid_from_bricks(currentField.bricks);
+            std::array<int,3> grid_out = infer_grid_from_bricks(nextField.bricks);
+
+            int split_dim = -1;
+            for(int d = 0; d < 3; ++d)
+                if(grid_in[d] != grid_out[d])
+                    split_dim = d;
+
+            MPI_Comm_wrapper_t pencil_subcomm;
+            bool use_pencil_subcomm = false;
+
+            if(split_dim >= 0)
+            {
+                int rank;
+                MPI_Comm_rank(desc.mpi_comm, &rank);
+                int color = CommAllToAll::calculate_color_for_subcomm(rank, grid_in, split_dim);
+                pencil_subcomm.split(desc.mpi_comm, color, rank);
+
+                // --- Build send/recv counts for this subcomm and test uniformity ---
+                // We need to simulate what GlobalTransposeA2A will do:
+                // 1. Get local_comm_size and local_comm_rank within the subcomm
+                int local_comm_rank, local_comm_size;
+                MPI_Comm_rank(pencil_subcomm, &local_comm_rank);
+                MPI_Comm_size(pencil_subcomm, &local_comm_size);
+
+                // 2. Build send_counts, recv_counts for this rank in subcomm:
+                //    (Similar logic as in GlobalTransposeA2A, but restricted to subcomm)
+                std::vector<size_t> send_counts(local_comm_size, 0);
+                std::vector<size_t> recv_counts(local_comm_size, 0);
+
+                for(size_t inBrickIdx = 0; inBrickIdx < currentField.bricks.size(); ++inBrickIdx)
+                {
+                    const auto& inBrick = currentField.bricks[inBrickIdx];
+                    int inRank = inBrick.location.comm_rank;
+                    for(size_t outBrickIdx = 0; outBrickIdx < nextField.bricks.size(); ++outBrickIdx)
+                    {
+                        const auto& outBrick = nextField.bricks[outBrickIdx];
+                        int outRank = outBrick.location.comm_rank;
+
+                        // Only care about ranks in the subcomm (i.e., 0 <= inRank/outRank < local_comm_size)
+                        if(inRank >= local_comm_size || outRank >= local_comm_size)
+                            continue;
+
+                        auto intersection = inBrick.intersect(outBrick);
+                        if(intersection.empty())
+                            continue;
+
+                        const auto elems = intersection.count_elems();
+                        if(inRank == local_comm_rank)
+                            send_counts[outRank] += elems;
+                        if(outRank == local_comm_rank)
+                            recv_counts[inRank] += elems;
+                    }
+                }
+                // 3. Check uniformity
+                auto all_eq = [](const std::vector<size_t>& v)
+                {
+                    return std::all_of(v.begin(), v.end(), [&](size_t c){ return c == v[0]; });
+                };
+                if(!send_counts.empty() && !recv_counts.empty() &&
+                   all_eq(send_counts) && all_eq(recv_counts))
+                {
+                    use_pencil_subcomm = true;
+                }
+            }
+
+            // ---- Transpose using this subcomm if possible ----
             std::vector<size_t> transposeItems;
             GlobalTranspose(
                 elem_size,
@@ -2571,14 +2615,15 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 tempBufs,
                 currentAntecedents,
                 transposeItems,
-                transposeNumber++
+                transposeNumber++,
+                (use_pencil_subcomm ? std::move(pencil_subcomm) : MPI_Comm_wrapper_t{})
             );
             currentField = nextField;
             currentBufs = tempBufs;
             currentAntecedents = transposeItems;
         }
 
-        // -----
+        // ----
         // Find which axis is **contiguous** now (that is, NOT split)
         // The only axis where, for all local bricks, brick.upper[axis]-brick.lower[axis] == global lengths[axis]
         int contiguous_axis = -1;
@@ -2650,6 +2695,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         );
     }
 }
+
 
 
 

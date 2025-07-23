@@ -1388,8 +1388,8 @@ struct CommAllToAll : public MultiPlanItem
                  const std::vector<size_t>& _recvCounts,
                  BufferPtr                  _sendBuf,
                  BufferPtr                  _recvBuf,
-                 bool                       uniformCounts,
-                 bool                       useSubcomm = false ROCFFT_COMMALLTOALL_SUBCOMM_ARG)
+                 bool                       uniformCounts
+                 ROCFFT_COMMALLTOALL_SUBCOMM_ARG)
         : precision(_precision)
         , arrayType(_arrayType)
         , sendOffsets(_sendOffsets)
@@ -1399,7 +1399,7 @@ struct CommAllToAll : public MultiPlanItem
         , sendBuf(_sendBuf)
         , recvBuf(_recvBuf)
         , uniform_counts(uniformCounts)
-        , use_subcomm(useSubcomm) ROCFFT_COMMALLTOALL_SUBCOMM_INIT
+        ROCFFT_COMMALLTOALL_SUBCOMM_INIT
     {
         // Currently MPI interface uses 32-bit signed ints, so assert
         // that our counts/offsets don't overflow that type
@@ -1483,8 +1483,6 @@ private:
     bool uniform_counts = false;
 
     // subcomm for optimizations whenever possible
-    bool use_subcomm = false;
-
 #ifdef ROCFFT_MPI_ENABLE
     MPI_Comm_wrapper_t subcomm;
 #endif

@@ -356,7 +356,8 @@ private:
                          std::vector<BufferPtr>&    output,
                          const std::vector<size_t>& inputAntecedents,
                          std::vector<size_t>&       outputItems,
-                         size_t                     transposeNumber);
+                         size_t                     transposeNumber,
+                        MPI_Comm_wrapper_t&&       subcomm = MPI_Comm_wrapper_t{});
 
     // global transpose implemented as an all-to-all communication.
     void GlobalTransposeA2A(size_t                     elem_size,
@@ -366,7 +367,8 @@ private:
                             std::vector<BufferPtr>&    output,
                             const std::vector<size_t>& inputAntecedents,
                             std::vector<size_t>&       outputItems,
-                            const std::string&         itemGroup);
+                            const std::string&         itemGroup,
+                        MPI_Comm_wrapper_t&&       subcomm = MPI_Comm_wrapper_t{});
 
     // fallback case for global transpose that uses point-to-point
     // communications, for when all-to-all isn't possible.
