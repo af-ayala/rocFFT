@@ -105,6 +105,15 @@ struct rocfft_brick_t
     // compute offset of this brick, given the field's stride
     size_t offset_in_field(const std::vector<size_t>& fieldStride) const;
 
+    bool operator==(const rocfft_brick_t& other) const
+    {
+        return lower == other.lower &&
+               upper == other.upper &&
+               stride == other.stride &&
+               location.comm_rank == other.location.comm_rank &&
+               location.device == other.location.device;
+    }
+
     std::string str() const;
 };
 
