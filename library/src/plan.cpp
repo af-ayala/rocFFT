@@ -2508,69 +2508,118 @@ if(rank == 3 && !use_intermediate_slabs)
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
-    // 1. FFT along X in input grid (already done above in contiguousInputDims)
+    // 1. FFT along initially contiguous input dims (already handled above)
 
-    // 2. Transpose from input grid {2,2,1} to intermediate {2,1,2}
-    // Let's say we want to split dims 0 and 2 (X and Z)
-    std::vector<size_t> splitDims = {0, 2};  // X and Z
+    // 2. Identify pencilization steps
+    rocfft_field_t currentField = desc.inFields.front();
+    std::vector<BufferPtr> currentBufs = inputFFTBufs;
+    std::vector<size_t> currentAntecedents = inputFFTItems;
 
-    rocfft_field_t interField = MakeFieldWithSplit(desc.inFields.front(), lengthsWithBatch, splitDims);
+    // We'll check which dims are not yet pencilized in the output grid
+    // We'll keep track of which FFTs have already been performed
+    std::vector<size_t> fft_done(rank, 0);
+    for(auto d : contiguousInputDims)
+        fft_done[d] = 1;
 
-    std::vector<TempBufferLease> tempLeases_inter;
-    std::vector<BufferPtr> tempBufs_inter;
-    for(size_t b = 0; b < interField.bricks.size(); ++b)
+    // We need to bring each remaining dimension into pencils, in some order
+    // The target is for the *output* grid to be pencilized in all dims,
+    // or at least in those for which FFTs are needed.
+
+    // For each non-FFT'd dim in output, pencilize and FFT
+    for(size_t i = 0; i < rank; ++i)
     {
-        tempLeases_inter.emplace_back(tempBuffers, local_comm_rank, interField.bricks[b].location, interField.bricks[b].count_elems(), elem_size);
-        tempBufs_inter.emplace_back(BufferPtr::temp(tempLeases_inter.back().data()));
+        if(!fft_done[i])
+        {
+            // Pencilize dim i (i.e. make it contiguous/split in this step)
+            // Find split dims: include already-FFT'd dims, and this one
+            std::vector<size_t> splitDims;
+            for(size_t d = 0; d < rank; ++d)
+            {
+                if(fft_done[d] || d == i)
+                    splitDims.push_back(d);
+            }
+            rocfft_field_t nextField = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
+
+            // Allocate buffers
+            std::vector<TempBufferLease> tempLeases;
+            std::vector<BufferPtr> tempBufs;
+            for(size_t b = 0; b < nextField.bricks.size(); ++b)
+            {
+                tempLeases.emplace_back(
+                    tempBuffers, local_comm_rank, nextField.bricks[b].location, nextField.bricks[b].count_elems(), elem_size
+                );
+                tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
+            }
+
+            // Transpose to nextField
+            std::vector<size_t> transposeItems;
+            GlobalTranspose(
+                elem_size,
+                currentField,
+                nextField,
+                currentBufs,
+                tempBufs,
+                currentAntecedents,
+                transposeItems,
+                transposeNumber++
+            );
+
+            // FFT along this newly contiguous dim
+            std::vector<size_t> fftItems;
+            C2CField(
+                nextField,
+                {i},
+                tempBufs,
+                tempBufs,
+                transposeItems,
+                fftItems
+            );
+
+            // Prepare for next iteration
+            currentField = nextField;
+            currentBufs = tempBufs;
+            currentAntecedents = fftItems;
+            fft_done[i] = 1;
+        }
     }
 
-    std::vector<size_t> transposeItems_inter;
-    GlobalTransposeA2A(
-        elem_size,
-        desc.inFields.front(),
-        interField,
-        inputFFTBufs,
-        tempBufs_inter,
-        inputFFTItems,
-        transposeItems_inter,
-        "transpose_" + std::to_string(transposeNumber++)
-    );
+    // Now, currentField *should* match the output layout for the FFTed dims
+    // If the output layout is *already* compatible, just copy or use it directly.
+    // Otherwise, if the currentField's grid does not match the outputField,
+    // do a final transpose to output grid (and do not FFT any further dims).
+    bool needs_final_transpose = false;
+    for(size_t d = 0; d < rank; ++d)
+    {
+        if(currentField.bricks.size() != desc.outFields.front().bricks.size())
+        {
+            needs_final_transpose = true;
+            break;
+        }
+        // Or do a more thorough comparison of brick layouts if needed
+    }
 
-    // 3. FFT along Y in the {2,1,2} grid
-    std::vector<size_t> fftItems_inter;
-    C2CField(
-        interField,
-        {1}, // Y
-        tempBufs_inter,
-        tempBufs_inter,
-        transposeItems_inter,
-        fftItems_inter
-    );
-
-    // 4. Transpose from {2,1,2} to output grid {2,1,2}
     std::vector<BufferPtr> outputBufs = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
     std::vector<size_t> finalTransposeItems;
-    GlobalTransposeA2A(
-        elem_size,
-        interField,
-        desc.outFields.front(),
-        tempBufs_inter,
-        outputBufs,
-        fftItems_inter,
-        finalTransposeItems,
-        "transpose_" + std::to_string(transposeNumber++)
-    );
+    if(needs_final_transpose)
+    {
+        GlobalTranspose(
+            elem_size,
+            currentField,
+            desc.outFields.front(),
+            currentBufs,
+            outputBufs,
+            currentAntecedents,
+            finalTransposeItems,
+            transposeNumber++
+        );
+    }
+    else
+    {
+        // If no final transpose needed, just set the antecedents
+        finalTransposeItems = currentAntecedents;
+    }
 
-    // 5. FFT along Z in output grid
-    std::vector<size_t> finalFFTItems;
-    C2CField(
-        desc.outFields.front(),
-        {2}, // Z
-        outputBufs,
-        outputBufs,
-        finalTransposeItems,
-        finalFFTItems
-    );
+    // No more FFTs needed: all FFTs done in each pencil direction.
 }
     else
     {
