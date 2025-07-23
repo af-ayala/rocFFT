@@ -2510,7 +2510,15 @@ if(rank == 3 && !use_intermediate_slabs)
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
-    // Start with current field/buffers after contiguous FFTs
+    // Helper: returns true if all bricks are pencils along axis
+    auto is_pencil = [](const rocfft_field_t& field, int axis, const std::vector<size_t>& lengths) {
+        for(const auto& brick : field.bricks)
+            if((brick.upper[axis] - brick.lower[axis]) != lengths[axis])
+                return false;
+        return true;
+    };
+
+    // Step 1: Start with the field after input FFTs
     rocfft_field_t currentField = desc.inFields.front();
     std::vector<BufferPtr> currentBufs = inputFFTBufs;
     std::vector<size_t> currentAntecedents = inputFFTItems;
@@ -2520,110 +2528,107 @@ if(rank == 3 && !use_intermediate_slabs)
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
 
-    // We want to match the user’s requested output grid as soon as possible
-    // and only transpose as needed
-
-    // Do pencilization+FFT for each non-FFT’d direction
+    // List of axes to pencilize/FFT in order
+    std::vector<int> pencilize_order;
     for(int axis = 0; axis < 3; ++axis)
-    {
         if(!fft_done[axis])
+            pencilize_order.push_back(axis);
+
+    // Keep track of last computed field and buffers for possible final transpose
+    rocfft_field_t lastField = currentField;
+    std::vector<BufferPtr> lastBufs = currentBufs;
+    std::vector<size_t> lastAntecedents = currentAntecedents;
+
+    // Now do two pencilizations (for the two remaining axes)
+    for(size_t pencil_step = 0; pencil_step < pencilize_order.size(); ++pencil_step)
+    {
+        int axis = pencilize_order[pencil_step];
+
+        // Compute the next pencilization (split on all FFT'd + this axis)
+        std::vector<size_t> splitDims;
+        for(int d = 0; d < 3; ++d)
+            if(fft_done[d] || d == axis)
+                splitDims.push_back(d);
+
+        rocfft_field_t nextField = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
+
+        // Allocate temp buffers
+        std::vector<TempBufferLease> tempLeases;
+        std::vector<BufferPtr> tempBufs;
+        for(size_t b = 0; b < nextField.bricks.size(); ++b)
         {
-            // Target: Is output already pencils in this direction?
-            bool output_has_pencils = true;
-            for(const auto& brick : desc.outFields.front().bricks)
-            {
-                if((brick.upper[axis] - brick.lower[axis]) != lengths[axis])
-                {
-                    output_has_pencils = false;
-                    break;
-                }
-            }
-
-            if(output_has_pencils)
-            {
-                // If output already pencils, we can skip pencilizing again and just transpose to output!
-                // Jump out of loop early
-                break;
-            }
-
-            // Otherwise, pencilize by splitting along all FFTed axes and the current one
-            std::vector<size_t> splitDims;
-            for(int d = 0; d < 3; ++d)
-                if(fft_done[d] || d == axis)
-                    splitDims.push_back(d);
-
-            rocfft_field_t nextField = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
-
-            // Allocate temp buffers
-            std::vector<TempBufferLease> tempLeases;
-            std::vector<BufferPtr> tempBufs;
-            for(size_t b = 0; b < nextField.bricks.size(); ++b)
-            {
-                tempLeases.emplace_back(
-                    tempBuffers, local_comm_rank, nextField.bricks[b].location,
-                    nextField.bricks[b].count_elems(), elem_size
-                );
-                tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
-            }
-
-            // Transpose to the pencilized grid
-            std::vector<size_t> transposeItems;
-            GlobalTranspose(
-                elem_size,
-                currentField,
-                nextField,
-                currentBufs,
-                tempBufs,
-                currentAntecedents,
-                transposeItems,
-                transposeNumber++
+            tempLeases.emplace_back(
+                tempBuffers, local_comm_rank, nextField.bricks[b].location,
+                nextField.bricks[b].count_elems(), elem_size
             );
-
-            // FFT along this axis (now contiguous)
-            std::vector<size_t> fftItems;
-            C2CField(
-                nextField,
-                {static_cast<size_t>(axis)},
-                tempBufs,
-                tempBufs,
-                transposeItems,
-                fftItems
-            );
-
-            // Prepare for next round
-            currentField = nextField;
-            currentBufs = tempBufs;
-            currentAntecedents = fftItems;
-            fft_done[axis] = 1;
+            tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
         }
+
+        // Transpose to the pencilized grid
+        std::vector<size_t> transposeItems;
+        GlobalTranspose(
+            elem_size,
+            currentField,
+            nextField,
+            currentBufs,
+            tempBufs,
+            currentAntecedents,
+            transposeItems,
+            transposeNumber++
+        );
+
+        // FFT along this axis (now contiguous)
+        std::vector<size_t> fftItems;
+        C2CField(
+            nextField,
+            {static_cast<size_t>(axis)},
+            tempBufs,
+            tempBufs,
+            transposeItems,
+            fftItems
+        );
+
+        // Prepare for next round
+        currentField = nextField;
+        currentBufs = tempBufs;
+        currentAntecedents = fftItems;
+        fft_done[axis] = 1;
+
+        // Track the last field/bufs/antecedents for possible final transpose
+        lastField = currentField;
+        lastBufs = currentBufs;
+        lastAntecedents = currentAntecedents;
     }
 
-    // Check if currentField matches user-requested output grid (omgrid)
-    bool need_final_transpose = !(currentField.bricks == desc.outFields.front().bricks);
+    // After two pencilizations and two FFTs, last axis should be pencilized and FFT'd.
+    // At this point, currentField matches a pencil layout in the last axis to be FFT'd.
+    // Now, if the output grid matches this, just copy. If not, transpose to output grid.
+
+    bool output_matches = (lastField.bricks == desc.outFields.front().bricks);
 
     std::vector<BufferPtr> outputBufs = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
     std::vector<size_t> finalTransposeItems;
 
-    if(need_final_transpose)
+    if(!output_matches)
     {
-        // Final transpose to user grid
+        // Transpose from computed pencil layout to output grid
         GlobalTranspose(
             elem_size,
-            currentField,
+            lastField,
             desc.outFields.front(),
-            currentBufs,
+            lastBufs,
             outputBufs,
-            currentAntecedents,
+            lastAntecedents,
             finalTransposeItems,
             transposeNumber++
         );
     }
     else
     {
-        finalTransposeItems = currentAntecedents;
+        finalTransposeItems = lastAntecedents;
     }
 
-    // Last check: Are there any FFTs left to perform in the output grid?
+    // If any FFTs are left to do in the output grid, do them
     std::vector<size_t> outFFTDims;
     for(auto d : contiguousOutputDims)
         if(!fft_done[d])
@@ -2642,6 +2647,7 @@ if(rank == 3 && !use_intermediate_slabs)
         );
     }
 }
+
 
 
 
