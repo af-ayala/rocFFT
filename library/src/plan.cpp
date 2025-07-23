@@ -2533,7 +2533,7 @@ if(rank == 3 && !use_intermediate_slabs)
         tempBufs_inter,
         inputFFTItems,
         transposeItems_inter,
-        transposeNumber++
+        "transpose_" + std::to_string(transposeNumber++)
     );
 
     // 3. FFT along Y in the {2,1,2} grid
@@ -2558,7 +2558,7 @@ if(rank == 3 && !use_intermediate_slabs)
         outputBufs,
         fftItems_inter,
         finalTransposeItems,
-        transposeNumber++
+        "transpose_" + std::to_string(transposeNumber++)
     );
 
     // 5. FFT along Z in output grid
