@@ -2355,7 +2355,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     if(!outField.bricks.empty())
         alan_outdecgrid = infer_grid_from_bricks(desc.outFields[0].bricks);
     std::cout << "--descingrid desc.inFields[0]: " << alan_indecgrid[0] << " " << alan_indecgrid[1] << " " << alan_indecgrid[2] << std::endl;
-    std::cout << "--descoutgrid desc.inFields[0: " << alan_outdecgrid[0] << " " << alan_outdecgrid[1] << " " << alan_outdecgrid[2] << std::endl;
+    std::cout << "--descoutgrid desc.outFields[0]: " << alan_outdecgrid[0] << " " << alan_outdecgrid[1] << " " << alan_outdecgrid[2] << std::endl;
 // to delete  until here
 
 
@@ -2517,33 +2517,29 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
-
 if(rank == 3 && !use_intermediate_slabs)
 {
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
-    // Start with the field after initial contiguous FFTs
     rocfft_field_t currentField = desc.inFields.front();
     std::vector<BufferPtr> currentBufs = inputFFTBufs;
     std::vector<size_t> currentAntecedents = inputFFTItems;
 
-    // Track which dims have been FFTed (0: not yet, 1: done)
     std::vector<int> fft_done(3, 0);
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
 
-    // Identify order for PPP steps (axes not yet FFT'd)
     std::vector<int> pencilize_order;
     for(int axis = 0; axis < 3; ++axis)
         if(!fft_done[axis])
             pencilize_order.push_back(axis);
 
-    // Do pencilization/FFT for remaining axes (for 3D, should be 2 axes)
     for(size_t pstep = 0; pstep < pencilize_order.size(); ++pstep)
     {
         int axis = pencilize_order[pstep];
-        // Make pencils for all FFT'd dims + this axis
+
+        // Compute the next pencilized field shape
         std::vector<size_t> splitDims;
         for(int d = 0; d < 3; ++d)
             if(fft_done[d] || d == axis)
@@ -2551,50 +2547,70 @@ if(rank == 3 && !use_intermediate_slabs)
 
         rocfft_field_t nextField = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
 
-        // Allocate temp buffers for this pencil field
-        std::vector<TempBufferLease> tempLeases;
-        std::vector<BufferPtr> tempBufs;
-        for(size_t b = 0; b < nextField.bricks.size(); ++b)
+        // --- HERE IS THE FIX ---
+        // If currentField.bricks == nextField.bricks, just FFT, don't transpose!
+        if(currentField.bricks == nextField.bricks)
         {
-            tempLeases.emplace_back(
-                tempBuffers, local_comm_rank, nextField.bricks[b].location,
-                nextField.bricks[b].count_elems(), elem_size
+            // FFT along this axis (now contiguous)
+            std::vector<size_t> fftItems;
+            C2CField(
+                currentField,
+                {static_cast<size_t>(axis)},
+                currentBufs,
+                currentBufs,
+                currentAntecedents,
+                fftItems
             );
-            tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
+            currentAntecedents = fftItems;
+        }
+        else
+        {
+            // Allocate temp buffers for this pencil field
+            std::vector<TempBufferLease> tempLeases;
+            std::vector<BufferPtr> tempBufs;
+            for(size_t b = 0; b < nextField.bricks.size(); ++b)
+            {
+                tempLeases.emplace_back(
+                    tempBuffers, local_comm_rank, nextField.bricks[b].location,
+                    nextField.bricks[b].count_elems(), elem_size
+                );
+                tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
+            }
+
+            // Transpose to the pencilized grid
+            std::vector<size_t> transposeItems;
+            GlobalTranspose(
+                elem_size,
+                currentField,
+                nextField,
+                currentBufs,
+                tempBufs,
+                currentAntecedents,
+                transposeItems,
+                transposeNumber++
+            );
+
+            // FFT along this axis (now contiguous)
+            std::vector<size_t> fftItems;
+            C2CField(
+                nextField,
+                {static_cast<size_t>(axis)},
+                tempBufs,
+                tempBufs,
+                transposeItems,
+                fftItems
+            );
+
+            // Prepare for next round
+            currentField = nextField;
+            currentBufs = tempBufs;
+            currentAntecedents = fftItems;
         }
 
-        // Transpose to the pencilized grid
-        std::vector<size_t> transposeItems;
-        GlobalTranspose(
-            elem_size,
-            currentField,
-            nextField,
-            currentBufs,
-            tempBufs,
-            currentAntecedents,
-            transposeItems,
-            transposeNumber++
-        );
-
-        // FFT along this axis (now contiguous)
-        std::vector<size_t> fftItems;
-        C2CField(
-            nextField,
-            {static_cast<size_t>(axis)},
-            tempBufs,
-            tempBufs,
-            transposeItems,
-            fftItems
-        );
-
-        // Prepare for next round
-        currentField = nextField;
-        currentBufs = tempBufs;
-        currentAntecedents = fftItems;
         fft_done[axis] = 1;
     }
 
-    // Now check: does currentField match user output grid (omgrid)?
+    // Final transpose to user omgrid, if needed
     bool need_final_transpose = !(currentField.bricks == desc.outFields.front().bricks);
 
     std::vector<BufferPtr> outputBufs = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
@@ -2602,7 +2618,6 @@ if(rank == 3 && !use_intermediate_slabs)
 
     if(need_final_transpose)
     {
-        // Transpose from last computed pencil grid to omgrid
         GlobalTranspose(
             elem_size,
             currentField,
@@ -2638,6 +2653,7 @@ if(rank == 3 && !use_intermediate_slabs)
         );
     }
 }
+
 
 
 
