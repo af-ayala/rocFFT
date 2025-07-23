@@ -2519,6 +2519,9 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
 if(rank == 3 && !use_intermediate_slabs)
 {
+
+    std::cout << " *** just entered if(rank == 3 && !use_intermediate_slabs) *** " << std::endl;
+
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
@@ -2618,9 +2621,11 @@ if(rank == 3 && !use_intermediate_slabs)
 
     // Figure out which FFT dims (in output grid) are still missing
     std::vector<size_t> outFFTDims;
-    for(auto d : contiguousOutputDims)
+    for(auto d : contiguousOutputDims){
+        std::cout << "Figuring out which FFT dims (in output grid) are still missing" << std::endl;
         if(!fft_done[d])
             outFFTDims.push_back(d);
+    }
 
     if(!outFFTDims.empty())
     {
