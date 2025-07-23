@@ -2547,6 +2547,8 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 if(grid_in[d] != grid_out[d])
                     split_dim = d;
 
+            std::cout << "split dim is " << split_dim << std::endl;
+
             MPI_Comm_wrapper_t pencil_subcomm;
             bool use_pencil_subcomm = false;
 
@@ -2568,6 +2570,12 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 //    (Similar logic as in GlobalTransposeA2A, but restricted to subcomm)
                 std::vector<size_t> send_counts(local_comm_size, 0);
                 std::vector<size_t> recv_counts(local_comm_size, 0);
+
+                std::cout << "$$$$ inside_pencil logic send_counts: ";
+                for(auto x : send_counts) std::cout << x << " ";
+                std::cout << "\n$$$$ inside_pencil logic  recv_counts: ";
+                for(auto x : recv_counts) std::cout << x << " ";
+                std::cout << std::endl;
 
                 for(size_t inBrickIdx = 0; inBrickIdx < currentField.bricks.size(); ++inBrickIdx)
                 {
@@ -2604,6 +2612,12 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                     use_pencil_subcomm = true;
                 }
             }
+
+            if(use_pencil_subcomm)
+            std::cout<<" use_pencil_subcomm is true" << std::endl;  
+
+            if(pencil_subcomm)
+            std::cout<<" pencil_subcomm is valid" << std::endl;  
 
             // ---- Transpose using this subcomm if possible ----
             std::vector<size_t> transposeItems;
