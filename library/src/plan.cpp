@@ -2347,6 +2347,19 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2] << std::endl;
     std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2] << std::endl;
 
+// to delete 
+    std::array<int, 3> alan_indecgrid  = {1, 1, 1};
+    std::array<int, 3> alan_outdecgrid = {1, 1, 1};
+    if(!inField.bricks.empty())
+        alan_indecgrid = infer_grid_from_bricks(desc.inFields[0].bricks);
+    if(!outField.bricks.empty())
+        alan_outdecgrid = infer_grid_from_bricks(desc.outFields[0].bricks);
+    std::cout << "--descingrid desc.inFields[0]: " << alan_indecgrid[0] << " " << alan_indecgrid[1] << " " << alan_indecgrid[2] << std::endl;
+    std::cout << "--descoutgrid desc.inFields[0: " << alan_outdecgrid[0] << " " << alan_outdecgrid[1] << " " << alan_outdecgrid[2] << std::endl;
+// to delete  until here
+
+
+
     // check if optimization with sub-communicators is possible
     bool               use_subcomm = false;
     MPI_Comm_wrapper_t subcomm;
