@@ -2517,6 +2517,9 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
+
+
+
 if(rank == 3 && !use_intermediate_slabs)
 {
     auto lengthsWithBatch = lengths;
@@ -2526,73 +2529,102 @@ if(rank == 3 && !use_intermediate_slabs)
     std::vector<BufferPtr> currentBufs = inputFFTBufs;
     std::vector<size_t> currentAntecedents = inputFFTItems;
 
-    // Which dims have been FFTed (0: not yet, 1: done)
+    // At the start, FFT all input-contiguous dims
     std::vector<int> fft_done(3, 0);
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
 
-    // The axes to process, in the order we need them
-    std::vector<int> pencil_order;
+    // Find remaining dims to pencilize (in order of desired output split)
+    std::vector<int> pencilize_axes;
     for(int axis = 0; axis < 3; ++axis)
-        if(!fft_done[axis])
-            pencil_order.push_back(axis);
-
-    // Step 1: FFT any initially contiguous axes (already done outside this if)
-    // Step 2: First transpose to pencils in pencil_order[0] (if needed)
-    if(!pencil_order.empty())
     {
-        int axis1 = pencil_order[0];
-        // Split along all already FFT'd axes plus this one
+        // If user output splits this axis, but input doesn't, we must transpose
+        bool input_split = DimensionSplitInField(lengths[axis], axis, desc.inFields.front());
+        bool output_split = DimensionSplitInField(lengths[axis], axis, desc.outFields.front());
+        if(output_split && !input_split)
+            pencilize_axes.push_back(axis);
+    }
+
+    // For each pencilization step (there should be at most 2 in PPP)
+    for(size_t step = 0; step < pencilize_axes.size(); ++step)
+    {
+        int pencil_axis = pencilize_axes[step];
+
+        // Compute split dims for new pencil: all previous split axes + this one
         std::vector<size_t> splitDims;
         for(int d = 0; d < 3; ++d)
-            if(fft_done[d] || d == axis1)
-                splitDims.push_back(d);
-
-        rocfft_field_t pencil1Field = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
-
-        if(currentField.bricks != pencil1Field.bricks)
         {
+            // Use all previously split axes + this one
+            if(fft_done[d] || d == pencil_axis)
+                splitDims.push_back(d);
+        }
+        rocfft_field_t nextField = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
+
+        // Only transpose if necessary
+        if(currentField.bricks != nextField.bricks)
+        {
+            // Allocate temp buffers
             std::vector<TempBufferLease> tempLeases;
             std::vector<BufferPtr> tempBufs;
-            for(size_t b = 0; b < pencil1Field.bricks.size(); ++b)
+            for(size_t b = 0; b < nextField.bricks.size(); ++b)
             {
                 tempLeases.emplace_back(
-                    tempBuffers, local_comm_rank, pencil1Field.bricks[b].location,
-                    pencil1Field.bricks[b].count_elems(), elem_size
+                    tempBuffers, local_comm_rank, nextField.bricks[b].location,
+                    nextField.bricks[b].count_elems(), elem_size
                 );
                 tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
             }
 
+            // Transpose
             std::vector<size_t> transposeItems;
             GlobalTranspose(
                 elem_size,
                 currentField,
-                pencil1Field,
+                nextField,
                 currentBufs,
                 tempBufs,
                 currentAntecedents,
                 transposeItems,
                 transposeNumber++
             );
-            currentField = pencil1Field;
+            currentField = nextField;
             currentBufs = tempBufs;
             currentAntecedents = transposeItems;
         }
-        // After this, axis1 is contiguous
-        std::vector<size_t> fftItems1;
+
+        // -----
+        // Find which axis is **contiguous** now (that is, NOT split)
+        // The only axis where, for all local bricks, brick.upper[axis]-brick.lower[axis] == global lengths[axis]
+        int contiguous_axis = -1;
+        for(int d = 0; d < 3; ++d)
+        {
+            bool all_full = true;
+            for(const auto& brick : currentField.bricks)
+                if((brick.upper[d] - brick.lower[d]) != lengths[d])
+                    all_full = false;
+            if(all_full && !fft_done[d])
+            {
+                contiguous_axis = d;
+                break;
+            }
+        }
+        assert(contiguous_axis >= 0);
+
+        // Compute FFT along the new contiguous axis
+        std::vector<size_t> fftItems;
         C2CField(
             currentField,
-            {static_cast<size_t>(axis1)},
+            {static_cast<size_t>(contiguous_axis)},
             currentBufs,
             currentBufs,
             currentAntecedents,
-            fftItems1
+            fftItems
         );
-        currentAntecedents = fftItems1;
-        fft_done[axis1] = 1;
+        fft_done[contiguous_axis] = 1;
+        currentAntecedents = fftItems;
     }
 
-    // Step 3: Transpose directly to output pencils if not already there
+    // Last: Are we at the user output grid?
     bool need_final_transpose = !(currentField.bricks == desc.outFields.front().bricks);
     std::vector<BufferPtr> outputBufs = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
     std::vector<size_t> finalTransposeItems;
@@ -2608,29 +2640,17 @@ if(rank == 3 && !use_intermediate_slabs)
             finalTransposeItems,
             transposeNumber++
         );
-    }
-    else
-    {
-        finalTransposeItems = currentAntecedents;
+        currentBufs = outputBufs;
+        currentAntecedents = finalTransposeItems;
+        currentField = desc.outFields.front();
     }
 
-    // Step 4: Find the final axis to FFT (the one not done yet and now contiguous in output)
+    // Any FFTs left to do in output grid?
     std::vector<size_t> outFFTDims;
-    for(size_t d = 0; d < 3; ++d)
-    {
-        // If it's not FFT'd yet, but now pencils in output (i.e. contiguous)
-        bool is_contig = true;
-        for(const auto& brick : desc.outFields.front().bricks)
-        {
-            if((brick.upper[d] - brick.lower[d]) != lengths[d])
-            {
-                is_contig = false;
-                break;
-            }
-        }
-        if(!fft_done[d] && is_contig)
+    for(auto d : contiguousOutputDims)
+        if(!fft_done[d])
             outFFTDims.push_back(d);
-    }
+
     if(!outFFTDims.empty())
     {
         std::vector<size_t> finalFFTItems;
@@ -2639,11 +2659,12 @@ if(rank == 3 && !use_intermediate_slabs)
             outFFTDims,
             outputBufs,
             outputBufs,
-            finalTransposeItems,
+            currentAntecedents,
             finalFFTItems
         );
     }
 }
+
 
 
 
