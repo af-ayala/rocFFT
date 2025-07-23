@@ -2483,19 +2483,10 @@ std::cout << "--num_split_dims_in: "  << num_split_dims_in << std::endl;
 std::cout << "--num_split_dims_out: " << num_split_dims_out << std::endl;
 
 
-#define USE_FILE_LOG 0  // set to 1 for per-rank file logging
+
 
 if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
 {
-    int my_global_rank = -1;
-    MPI_Comm_rank(desc.mpi_comm, &my_global_rank);
-#if USE_FILE_LOG
-    std::ofstream dbg("debug_rank" + std::to_string(my_global_rank) + ".log");
-    #define DOUT dbg
-#else
-    #define DOUT std::cout
-#endif
-
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
@@ -2521,16 +2512,11 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         int pencil_axis = pencilize_axes[step];
         std::vector<size_t> splitDims;
         for(int d = 0; d < 3; ++d)
+        {
             if(fft_done[d] || d == pencil_axis)
                 splitDims.push_back(d);
-
+        }
         rocfft_field_t nextField = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
-
-        DOUT << "[Rank " << my_global_rank << "] Step " << step
-             << ", Pencil axis: " << pencil_axis
-             << ", splitDims: ";
-        for(auto d : splitDims) DOUT << d << " ";
-        DOUT << std::endl;
 
         if(currentField.bricks != nextField.bricks)
         {
@@ -2539,82 +2525,109 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             for(size_t b = 0; b < nextField.bricks.size(); ++b)
             {
                 tempLeases.emplace_back(
-                    tempBuffers, my_global_rank, nextField.bricks[b].location,
+                    tempBuffers, local_comm_rank, nextField.bricks[b].location,
                     nextField.bricks[b].count_elems(), elem_size
                 );
                 tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
             }
 
-            // --- Begin NEW correct subcomm logic ---
+            // ---- NEW: Robust subcomm creation with mapping ----
+            std::array<int,3> grid_in  = infer_grid_from_bricks(currentField.bricks);
+            std::array<int,3> grid_out = infer_grid_from_bricks(nextField.bricks);
 
-            // 1. Find all neighbor ranks overlapping with my nextField bricks
-            std::set<int> pencil_neighbors;
-            for (size_t i = 0; i < nextField.bricks.size(); ++i)
+            int split_dim = -1;
+            for(int d = 0; d < 3; ++d)
+                if(grid_in[d] != grid_out[d])
+                    split_dim = d;
+
+            std::cout << "split dim is " << split_dim << std::endl;
+
+            MPI_Comm_wrapper_t pencil_subcomm;
+            bool use_pencil_subcomm = false;
+
+            if(split_dim >= 0)
             {
-                if(nextField.bricks[i].location.comm_rank == my_global_rank)
+                int world_rank;
+                MPI_Comm_rank(desc.mpi_comm, &world_rank);
+                int color = CommAllToAll::calculate_color_for_subcomm(world_rank, grid_in, split_dim);
+                pencil_subcomm.split(desc.mpi_comm, color, world_rank);
+
+                int local_comm_rank, local_comm_size;
+                MPI_Comm_rank(pencil_subcomm, &local_comm_rank);
+                MPI_Comm_size(pencil_subcomm, &local_comm_size);
+
+                // --- Build global-to-local rank mapping for this subcomm ---
+                std::vector<int> subcomm_global_ranks(local_comm_size, -1);
+                int my_global_rank;
+                MPI_Comm_rank(desc.mpi_comm, &my_global_rank);
+                for(int grank = 0, found = 0; found < local_comm_size; ++grank)
                 {
-                    const auto& my_brick = nextField.bricks[i];
-                    for (const auto& in_brick : currentField.bricks)
-                        if (!in_brick.intersect(my_brick).empty())
-                            pencil_neighbors.insert(in_brick.location.comm_rank);
+                    int g_color = CommAllToAll::calculate_color_for_subcomm(grank, grid_in, split_dim);
+                    if(g_color == color)
+                    {
+                        subcomm_global_ranks[found] = grank;
+                        found++;
+                    }
                 }
+                // Print subcomm global rank mapping for debug:
+                std::cout << "Pencil subcomm (split_dim=" << split_dim << ", color=" << color << "): ";
+                for(int i = 0; i < local_comm_size; ++i)
+                    std::cout << subcomm_global_ranks[i] << " ";
+                std::cout << "\nLocal rank: " << local_comm_rank << " Global rank: " << my_global_rank << std::endl;
+
+                std::cout << "\nLocal comm size: " << local_comm_size << std::endl;
+
+                // --- Build send/recv counts indexed by local subcomm rank ---
+                std::vector<size_t> send_counts(local_comm_size, 0);
+                std::vector<size_t> recv_counts(local_comm_size, 0);
+
+                for(size_t inBrickIdx = 0; inBrickIdx < currentField.bricks.size(); ++inBrickIdx)
+                {
+                    const auto& inBrick = currentField.bricks[inBrickIdx];
+                    // Find local rank for global inBrick location
+                    auto it_in = std::find(subcomm_global_ranks.begin(), subcomm_global_ranks.end(), inBrick.location.comm_rank);
+                    if(it_in == subcomm_global_ranks.end()) continue;
+                    int in_local = std::distance(subcomm_global_ranks.begin(), it_in);
+
+                    for(size_t outBrickIdx = 0; outBrickIdx < nextField.bricks.size(); ++outBrickIdx)
+                    {
+                        const auto& outBrick = nextField.bricks[outBrickIdx];
+                        auto it_out = std::find(subcomm_global_ranks.begin(), subcomm_global_ranks.end(), outBrick.location.comm_rank);
+                        if(it_out == subcomm_global_ranks.end()) continue;
+                        int out_local = std::distance(subcomm_global_ranks.begin(), it_out);
+
+                        auto intersection = inBrick.intersect(outBrick);
+                        if(intersection.empty())
+                            continue;
+
+                        const auto elems = intersection.count_elems();
+                        if(in_local == local_comm_rank)
+                            send_counts[out_local] += elems;
+                        if(out_local == local_comm_rank)
+                            recv_counts[in_local] += elems;
+                    }
+                }
+                // 3. Check uniformity
+                auto all_eq = [](const std::vector<size_t>& v)
+                {
+                    return !v.empty() && std::all_of(v.begin(), v.end(), [&](size_t c){ return c == v[0]; });
+                };
+                std::cout << "send_counts: ";
+                for(auto x : send_counts) std::cout << x << " ";
+                std::cout << "recv_counts: ";
+                for(auto x : recv_counts) std::cout << x << " ";
+                std::cout << std::endl;
+                if(all_eq(send_counts) && all_eq(recv_counts))
+                {
+                    use_pencil_subcomm = true;
+                }
+                std::cout << "use_pencil_subcomm? " << (use_pencil_subcomm ? "YES" : "NO") << std::endl;
             }
 
-            DOUT << "[Rank " << my_global_rank << "] My pencil_neighbors: ";
-            for(auto r : pencil_neighbors) DOUT << r << " ";
-            DOUT << std::endl;
+            if(pencil_subcomm)
+                std::cout<<" pencil_subcomm is valid" << std::endl;
 
-            // 2. Gather all neighbor sets to union across ranks
-            std::vector<int> my_neighbors_vec(pencil_neighbors.begin(), pencil_neighbors.end());
-            int nprocs = 0;
-            MPI_Comm_size(desc.mpi_comm, &nprocs);
-            int my_count = my_neighbors_vec.size();
-            std::vector<int> recvcounts(nprocs), displs(nprocs);
-            MPI_Allgather(&my_count, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, desc.mpi_comm);
-            int total_count = 0;
-            for(int i = 0; i < nprocs; ++i)
-            {
-                displs[i] = total_count;
-                total_count += recvcounts[i];
-            }
-            std::vector<int> all_neighbors(total_count, -1);
-            MPI_Allgatherv(my_neighbors_vec.data(), my_count, MPI_INT,
-                           all_neighbors.data(), recvcounts.data(), displs.data(),
-                           MPI_INT, desc.mpi_comm);
-
-            std::set<int> subcomm_ranks;
-            for (auto r : all_neighbors)
-                if(r >= 0) subcomm_ranks.insert(r);
-
-            DOUT << "[Rank " << my_global_rank << "] Subcomm ranks for pencil: ";
-            for(auto r : subcomm_ranks) DOUT << r << " ";
-            DOUT << std::endl;
-
-            // 3. Create the subcomm
-            MPI_Group world_group;
-            MPI_Comm_group(desc.mpi_comm, &world_group);
-            std::vector<int> subcomm_vec(subcomm_ranks.begin(), subcomm_ranks.end());
-            MPI_Group pencil_group;
-            MPI_Group_incl(world_group, subcomm_vec.size(), subcomm_vec.data(), &pencil_group);
-            MPI_Comm_wrapper_t pencil_comm;
-            MPI_Comm_create(desc.mpi_comm, pencil_group, &pencil_comm);
-
-            int in_pencil_comm = (pencil_comm != MPI_COMM_NULL);
-            int pencil_local_rank = -1, pencil_comm_size = -1;
-            if(in_pencil_comm)
-            {
-                MPI_Comm_rank(pencil_comm, &pencil_local_rank);
-                MPI_Comm_size(pencil_comm, &pencil_comm_size);
-                DOUT << "[Rank " << my_global_rank << "] In pencil_comm: local_rank="
-                     << pencil_local_rank << " size=" << pencil_comm_size << std::endl;
-            }
-            else
-            {
-                DOUT << "[Rank " << my_global_rank << "] Not in pencil_comm" << std::endl;
-            }
-
-            // 4. Transpose using this subcomm if you are in it
-            MPI_Barrier(desc.mpi_comm);
+            // ---- Transpose using this subcomm if possible ----
             std::vector<size_t> transposeItems;
             GlobalTranspose(
                 elem_size,
@@ -2625,18 +2638,11 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 currentAntecedents,
                 transposeItems,
                 transposeNumber++,
-                (in_pencil_comm ? MPI_Comm_wrapper_t(pencil_comm) : MPI_Comm_wrapper_t{})
+                (use_pencil_subcomm ? std::move(pencil_subcomm) : MPI_Comm_wrapper_t{})
             );
             currentField = nextField;
             currentBufs = tempBufs;
             currentAntecedents = transposeItems;
-            MPI_Barrier(desc.mpi_comm);
-
-            MPI_Group_free(&pencil_group);
-            MPI_Group_free(&world_group);
-            if(pencil_comm != MPI_COMM_NULL)
-                MPI_Comm_free(&pencil_comm);
-            // --- End NEW correct subcomm logic ---
         }
 
         // ---- Find which axis is **contiguous** now (that is, NOT split)
@@ -2654,8 +2660,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             }
         }
         assert(contiguous_axis >= 0);
-
-        DOUT << "[Rank " << my_global_rank << "] Next FFT axis: " << contiguous_axis << std::endl;
 
         std::vector<size_t> fftItems;
         C2CField(
@@ -2676,8 +2680,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     std::vector<size_t> finalTransposeItems;
     if(need_final_transpose)
     {
-        MPI_Barrier(desc.mpi_comm);
-        DOUT << "[Rank " << my_global_rank << "] Doing final transpose to user output grid" << std::endl;
         GlobalTranspose(
             elem_size,
             currentField,
@@ -2691,7 +2693,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         currentBufs = outputBufs;
         currentAntecedents = finalTransposeItems;
         currentField = desc.outFields.front();
-        MPI_Barrier(desc.mpi_comm);
     }
 
     std::vector<size_t> outFFTDims;
@@ -2701,10 +2702,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
 
     if(!outFFTDims.empty())
     {
-        DOUT << "[Rank " << my_global_rank << "] Final FFT dims: ";
-        for(auto d : outFFTDims) DOUT << d << " ";
-        DOUT << std::endl;
-
         std::vector<size_t> finalFFTItems;
         C2CField(
             desc.outFields.front(),
@@ -2715,15 +2712,9 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             finalFFTItems
         );
     }
-
-    MPI_Barrier(desc.mpi_comm);
-    DOUT << "[Rank " << my_global_rank << "] Leaving BuildOptMultiDevicePlan, currentField.bricks.size = "
-         << currentField.bricks.size() << std::endl;
-
-#if USE_FILE_LOG
-    dbg.close();
-#endif
 }
+
+
 
 
 

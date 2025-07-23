@@ -944,8 +944,6 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
                                              const std::array<int, 3>& in_grid,
                                              const std::array<int, 3>& out_grid)
 {
-
-    std::cout << ">>> called within can_form_subcommunicators" << std::endl;
     std::cout << ">>>send_counts: ";
     for(auto x : send_counts) std::cout << x << " ";
     std::cout << "\n >>>recv_counts: ";
@@ -991,7 +989,7 @@ bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
 }
 #endif
 
-int alan_kia = 1;
+int alan_kia = 0;
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
                                 void*                 out_buffer[],
@@ -1017,10 +1015,8 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
 #ifdef ROCFFT_MPI_ENABLE
 
-MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
-
 std::cout <<  "uniform_counts inside ExecuteAsync" << std::endl;
-std::cout << "uniform_counts: " << uniform_counts << std::endl;
+std::cout << "uniform_counts: " << uniform_counts << ", use_subcomm: " << use_subcomm << std::endl;
 std::cout << "sendCounts: ";
 for(auto x : sendCounts) std::cout << x << " ";
 std::cout << "\n recvCounts: ";
@@ -1031,7 +1027,7 @@ std::cout << std::endl;
 
     MPI_Request request;
 
-    if (uniform_counts && subcomm)
+    if(uniform_counts && use_subcomm)
     {
         std::cout << "Using subcommunicator-based MPI_Ialltoall\n";
 
@@ -1046,7 +1042,7 @@ std::cout << std::endl;
                                           recvBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
                                           MPI_CHAR,
-                                          transpose_comm,
+                                          subcomm,
                                           &request);
 
         if(mpiret != MPI_SUCCESS)
@@ -1076,7 +1072,7 @@ std::cout << std::endl;
                                           recvBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
                                           MPI_CHAR,
-                                          transpose_comm,
+                                          plan->desc.mpi_comm,
                                           &request);
 
         if(mpiret != MPI_SUCCESS)
@@ -1124,7 +1120,7 @@ std::cout << std::endl;
                                            intRecvCounts.data(),
                                            intRecvOffsets.data(),
                                            rocfft_type_to_mpi_type(precision, arrayType),
-                                           transpose_comm,
+                                           plan->desc.mpi_comm,
                                            &request);
 
         if(mpiret != MPI_SUCCESS)
