@@ -2575,6 +2575,8 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                     std::cout << subcomm_global_ranks[i] << " ";
                 std::cout << "\nLocal rank: " << local_comm_rank << " Global rank: " << my_global_rank << std::endl;
 
+                std::cout << "\nLocal comm size: " << local_comm_size << std::endl;
+
                 // --- Build send/recv counts indexed by local subcomm rank ---
                 std::vector<size_t> send_counts(local_comm_size, 0);
                 std::vector<size_t> recv_counts(local_comm_size, 0);
