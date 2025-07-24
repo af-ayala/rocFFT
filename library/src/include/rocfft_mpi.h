@@ -35,6 +35,11 @@ class MPI_Comm_wrapper_t
 public:
     MPI_Comm_wrapper_t() = default;
 
+    explicit MPI_Comm_wrapper_t(MPI_Comm c)
+        : mpi_comm(c)
+    {
+    }
+
     // conversion to unwrapped communicator for passing to MPI APIs
     operator MPI_Comm() const
     {
