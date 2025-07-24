@@ -2642,6 +2642,9 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
 
+    DOUT << "[Rank " << my_global_rank << "] My fft_done : ";
+    for(auto r : fft_done ) DOUT << r << " ";
+    
     std::vector<int> pencilize_axes;
     for(int axis = 0; axis < 3; ++axis)
     {
