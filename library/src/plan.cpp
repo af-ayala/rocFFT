@@ -2648,9 +2648,9 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     std::vector<int> pencilize_axes;
     for(int axis = 0; axis < 3; ++axis)
     {
-        bool input_split = DimensionSplitInField(lengths[axis], axis, desc.inFields.front());
-        bool output_split = DimensionSplitInField(lengths[axis], axis, desc.outFields.front());
-        if(output_split && !input_split)
+        // if FFT not yet done, and axis is SPLIT at output, pencilize;
+        // otherwise, the FFT in [axis] will be performed as a last step
+        if(!fft_done[axis] && DimensionSplitInField(lengths[axis], axis, desc.outFields.front()))
             pencilize_axes.push_back(axis);
     }
 
@@ -2835,6 +2835,10 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     for(auto d : contiguousOutputDims)
         if(!fft_done[d])
             outFFTDims.push_back(d);
+
+    DOUT << "[Rank " << my_global_rank << "] ++outFFTDims: ";
+    for(auto d : outFFTDims) DOUT << d << " ";
+    DOUT << std::endl;
 
     if(!outFFTDims.empty())
     {
