@@ -2605,8 +2605,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             MPI_Group_free(&world_group);
 
             // Wrap the new communicator (only if valid)
-            MPI_Comm_wrapper_t pencil_comm;
-            int in_pencil_comm = 0;
             int pencil_local_rank = -1, pencil_comm_size = -1;
 
             MPI_Comm_wrapper_t pencil_comm = (tmp_comm != MPI_COMM_NULL)
