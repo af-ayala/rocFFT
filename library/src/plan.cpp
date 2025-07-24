@@ -2367,6 +2367,10 @@ rocfft_field_t MakeFieldWithSlabSplit(const rocfft_field_t& base, const std::vec
     size_t splits[3] = {1,1,1};
     splits[splitAxis] = numBricks;
 
+    // Check that splitting is possible
+    assert(length[splitAxis] % splits[splitAxis] == 0 && "Slab split must divide axis evenly");
+    assert(out.bricks.size() == numBricks && "Unexpected number of bricks in field");
+
     for(size_t i = 0; i < numBricks; ++i)
     {
         auto& brick = out.bricks[i];
@@ -2374,8 +2378,9 @@ rocfft_field_t MakeFieldWithSlabSplit(const rocfft_field_t& base, const std::vec
         brick.upper = length;
 
         size_t idx = i;
-        brick.lower[splitAxis] = length[splitAxis] / splits[splitAxis] * idx;
-        brick.upper[splitAxis] = length[splitAxis] / splits[splitAxis] * (idx+1);
+        size_t chunk = length[splitAxis] / splits[splitAxis];
+        brick.lower[splitAxis] = chunk * idx;
+        brick.upper[splitAxis] = chunk * (idx+1);
 
         // Update stride
         auto brickLength = brick.length();
@@ -2390,59 +2395,87 @@ rocfft_field_t MakeFieldWithSlabSplit(const rocfft_field_t& base, const std::vec
 }
 
 
-rocfft_field_t MakeFieldWithPencilSplit(const std::vector<size_t>& lengthsWithBatch, int axis_entire, int nprocs)
+
+
+rocfft_field_t MakeFieldWithPencilSplit(
+    const rocfft_field_t& currentField,
+    const std::vector<size_t>& lengthsWithBatch,
+    int axis_entire)
 {
-    // Find best balanced P*Q=nprocs
-    int P = 1, Q = nprocs;
-    for(int f = 1; f <= nprocs; ++f)
+    size_t ndim = lengthsWithBatch.size();
+    size_t nprocs = currentField.bricks.size();
+
+    // Find axes to split (not axis_entire)
+    std::vector<int> split_axes;
+    for(int d = 0; d < (int)ndim-1; ++d)
+        if(d != axis_entire)
+            split_axes.push_back(d);
+
+    // Factor nprocs as balanced as possible: P x Q = nprocs
+    size_t P = 1, Q = nprocs;
+    for(size_t f = 1; f <= nprocs; ++f)
     {
         if(nprocs % f == 0)
         {
-            int q = nprocs / f;
-            if(std::abs(f - q) < std::abs(P - Q)) // Pick most balanced
+            size_t q = nprocs / f;
+            if(std::abs((int)f - (int)q) < std::abs((int)P - (int)Q))
             {
                 P = f; Q = q;
             }
         }
     }
+    // Prepare output field
+    rocfft_field_t out = currentField;
 
-    int split_axis0 = (axis_entire + 1) % 3;
-    int split_axis1 = (axis_entire + 2) % 3;
+    assert(P * Q == nprocs);
 
-    rocfft_field_t out;
-    out.bricks.resize(nprocs);
+    out.bricks.resize( nprocs );
 
-    for(int r = 0; r < nprocs; ++r)
+    // Distribute location/device assignments round-robin
+    for(size_t i = 0; i < nrpocs; ++i)
     {
-        auto& brick = out.bricks[r];
-        brick.lower = std::vector<size_t>(lengthsWithBatch.size(), 0);
-        brick.upper = lengthsWithBatch;
+        auto& brick = out.bricks[i];
 
-        int idx0 = r / Q;
-        int idx1 = r % Q;
+        // Compute 2D (p, q) indices for this brick
+        size_t p = i / Q;
+        size_t q = i % Q;
 
-        brick.lower[split_axis0] = lengthsWithBatch[split_axis0] * idx0 / P;
-        brick.upper[split_axis0] = lengthsWithBatch[split_axis0] * (idx0 + 1) / P;
+        // Set bounds for each axis
+        for(size_t d = 0; d < ndim; ++d)
+        {
+            brick.lower[d] = 0;
+            brick.upper[d] = lengthsWithBatch[d];
+        }
 
-        brick.lower[split_axis1] = lengthsWithBatch[split_axis1] * idx1 / Q;
-        brick.upper[split_axis1] = lengthsWithBatch[split_axis1] * (idx1 + 1) / Q;
+        int axis_p = split_axes[0];
+        int axis_q = split_axes[1];
 
-        // axis_entire stays full [0, N)
-        brick.location.comm_rank = r;
-        // brick.location.dev = ... // Set as needed
+        size_t len_p = lengthsWithBatch[axis_p];
+        size_t len_q = lengthsWithBatch[axis_q];
+        brick.lower[axis_p] = len_p * p / P;
+        brick.upper[axis_p] = len_p * (p+1) / P;
+        brick.lower[axis_q] = len_q * q / Q;
+        brick.upper[axis_q] = len_q * (q+1) / Q;
+        // axis_entire stays [0,len]
 
-        // Compute strides
-        brick.stride.resize(lengthsWithBatch.size(), 1);
-        auto brickLength = brick.length(); // (upper-lower) per dim
+        // Contiguous strides
+        auto brickLength = brick.length();
         size_t dist = 1;
         for(size_t s = 0; s < brick.stride.size(); ++s)
         {
             brick.stride[s] = dist;
             dist *= brickLength[s];
         }
+
+        // Assign device/rank in a round-robin fashion OR based on previous bricks
+        // Here: round-robin from currentField
+        const auto& ref_brick = currentField.bricks[i % currentField.bricks.size()];
+        brick.location = ref_brick.location;
     }
+
     return out;
 }
+
 
 
 
@@ -2564,7 +2597,10 @@ for(const auto& b : desc.outFields[0].bricks)
 if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
 {
     int my_global_rank = -1;
+    int nprocs = -1;
     MPI_Comm_rank(desc.mpi_comm, &my_global_rank);
+    MPI_Comm_Size(desc.mpi_comm, &nprocs);
+
 #if USE_FILE_LOG
     std::ofstream dbg("debug_rank" + std::to_string(my_global_rank) + ".log");
     #define DOUT dbg
@@ -2603,7 +2639,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         int pencil_axis = pencilize_axes[step];
 
         // Only one axis being split at a time for pencils:
-        rocfft_field_t nextField = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, pencil_axis);
+        rocfft_field_t nextField = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, pencil_axis, nprocs);
 
         std::cout << "___*___ nextField bricks:" << std::endl;
         for(const auto& b : nextField.bricks)
