@@ -2404,6 +2404,73 @@ rocfft_field_t MakeFieldWith2DSplit(
     return out;
 }
 
+// For slabs (2D split)
+rocfft_field_t MakeFieldWithSlabs(const rocfft_field_t& base, const std::vector<size_t>& length, int splitAxis0, int splitAxis1)
+{
+    size_t numBricks = base.bricks.size();
+    rocfft_field_t out = base;
+    size_t splits[3] = {1,1,1};
+    // For a 2D split, e.g. splits[0]=2, splits[1]=2 for 4 ranks
+    // Choose splits to multiply up to numBricks
+    // (user responsibility: pass in correct axes)
+    splits[splitAxis0] = 2;  // e.g. 2 slabs in X
+    splits[splitAxis1] = numBricks / splits[splitAxis0]; // e.g. 2 in Y
+
+    for(size_t i = 0; i < numBricks; ++i)
+    {
+        auto& brick = out.bricks[i];
+        std::fill(brick.lower.begin(), brick.lower.end(), 0);
+        brick.upper = length;
+
+        size_t idx0 = i / splits[splitAxis1];
+        size_t idx1 = i % splits[splitAxis1];
+        brick.lower[splitAxis0] = length[splitAxis0] / splits[splitAxis0] * idx0;
+        brick.upper[splitAxis0] = length[splitAxis0] / splits[splitAxis0] * (idx0+1);
+        brick.lower[splitAxis1] = length[splitAxis1] / splits[splitAxis1] * idx1;
+        brick.upper[splitAxis1] = length[splitAxis1] / splits[splitAxis1] * (idx1+1);
+
+        // Update stride
+        auto brickLength = brick.length();
+        size_t dist = 1;
+        for(size_t s = 0; s < brick.stride.size(); ++s)
+        {
+            brick.stride[s] = dist;
+            dist *= brickLength[s];
+        }
+    }
+    return out;
+}
+
+// For pencils (1D split)
+rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t& base, const std::vector<size_t>& length, int splitAxis)
+{
+    size_t numBricks = base.bricks.size();
+    rocfft_field_t out = base;
+    size_t splits[3] = {1,1,1};
+    splits[splitAxis] = numBricks;
+
+    for(size_t i = 0; i < numBricks; ++i)
+    {
+        auto& brick = out.bricks[i];
+        std::fill(brick.lower.begin(), brick.lower.end(), 0);
+        brick.upper = length;
+
+        size_t idx = i;
+        brick.lower[splitAxis] = length[splitAxis] / splits[splitAxis] * idx;
+        brick.upper[splitAxis] = length[splitAxis] / splits[splitAxis] * (idx+1);
+
+        // Update stride
+        auto brickLength = brick.length();
+        size_t dist = 1;
+        for(size_t s = 0; s < brick.stride.size(); ++s)
+        {
+            brick.stride[s] = dist;
+            dist *= brickLength[s];
+        }
+    }
+    return out;
+}
+
 
 // given splitDims (of size 2), returns a field where those two dims are split, and the other is contiguous
 rocfft_field_t MakeFieldWithSplit(const rocfft_field_t& base, const std::vector<size_t>& length, const std::vector<size_t>& splitDims)
@@ -2528,6 +2595,7 @@ const int num_split_dims_out = std::count_if(out_grid.begin(), out_grid.end(), [
 std::cout << "--num_split_dims_in: "  << num_split_dims_in << std::endl;
 std::cout << "--num_split_dims_out: " << num_split_dims_out << std::endl;
 
+
 #define USE_FILE_LOG 0  // set to 1 for per-rank file logging
 
 if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
@@ -2544,190 +2612,215 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
-    // Infer input and output grid shapes
-    std::array<int, 3> grid_in  = infer_grid_from_bricks(desc.inFields.front().bricks);
-    std::array<int, 3> grid_out = infer_grid_from_bricks(desc.outFields.front().bricks);
-
-    // Find which axes are split in input and output grids
-    std::vector<int> in_split_axes, out_split_axes;
-    for(int d = 0; d < 3; ++d) if(grid_in[d]  > 1) in_split_axes.push_back(d);
-    for(int d = 0; d < 3; ++d) if(grid_out[d] > 1) out_split_axes.push_back(d);
-
-    // We expect exactly two split axes in both grids!
-    assert(in_split_axes.size() == 2 && out_split_axes.size() == 2);
-
-    int first_fft_axis = -1;
-    // The axis that is NOT split in the input is the first to FFT
-    for(int d = 0; d < 3; ++d)
-        if(std::find(in_split_axes.begin(), in_split_axes.end(), d) == in_split_axes.end())
-            first_fft_axis = d;
-
     rocfft_field_t currentField = desc.inFields.front();
     std::vector<BufferPtr> currentBufs = inputFFTBufs;
     std::vector<size_t> currentAntecedents = inputFFTItems;
+    std::vector<int> fft_done(3, 0);
+    for(auto d : contiguousInputDims)
+        fft_done[d] = 1;
 
-    // --- 1. FFT in the contiguous input axis
-    DOUT << "[Rank " << my_global_rank << "] FFT in axis: " << first_fft_axis << std::endl;
-    std::vector<size_t> fftItems;
-    C2CField(currentField, {static_cast<size_t>(first_fft_axis)},
-             currentBufs, currentBufs, currentAntecedents, fftItems);
-    currentAntecedents = fftItems;
-
-    // --- 2. Transpose to 2D pencil grid (axes: in_split_axes[0], out_split_axes[1])
-    int splitA = in_split_axes[0];
-    int splitB = out_split_axes[1];
-
-    DOUT << "[Rank " << my_global_rank << "] Transposing to 2D pencil grid (" << splitA << "," << splitB << ")\n";
-    rocfft_field_t pencilField = MakeFieldWith2DSplit(currentField, lengthsWithBatch, splitA, splitB);
-
-    // Subcommunicator construction for the current transposition
-    std::set<int> pencil_neighbors;
-    for(const auto& out_brick : pencilField.bricks)
+    std::vector<int> pencilize_axes;
+    for(int axis = 0; axis < 3; ++axis)
     {
-        if(out_brick.location.comm_rank == my_global_rank)
+        bool input_split = DimensionSplitInField(lengths[axis], axis, desc.inFields.front());
+        bool output_split = DimensionSplitInField(lengths[axis], axis, desc.outFields.front());
+        if(output_split && !input_split)
+            pencilize_axes.push_back(axis);
+    }
+
+    for(size_t step = 0; step < pencilize_axes.size(); ++step)
+    {
+        int pencil_axis = pencilize_axes[step];
+
+        // Only one axis being split at a time for pencils:
+        rocfft_field_t nextField = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, pencil_axis);
+
+        DOUT << "[Rank " << my_global_rank << "] Step " << step
+             << ", Pencil axis: " << pencil_axis << std::endl;
+
+        if(currentField.bricks != nextField.bricks)
         {
-            for(const auto& in_brick : currentField.bricks)
-                if(!in_brick.intersect(out_brick).empty())
-                    pencil_neighbors.insert(in_brick.location.comm_rank);
+            // Allocate temp buffers for this field
+            std::vector<TempBufferLease> tempLeases;
+            std::vector<BufferPtr> tempBufs;
+            for(size_t b = 0; b < nextField.bricks.size(); ++b)
+            {
+                tempLeases.emplace_back(
+                    tempBuffers, my_global_rank, nextField.bricks[b].location,
+                    nextField.bricks[b].count_elems(), elem_size
+                );
+                tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
+            }
+
+            // 1. Determine overlapping ranks (subcommunicator members)
+            std::set<int> pencil_neighbors;
+            for(const auto& out_brick : nextField.bricks)
+            {
+                if(out_brick.location.comm_rank == my_global_rank)
+                {
+                    for(const auto& in_brick : currentField.bricks)
+                        if(!in_brick.intersect(out_brick).empty())
+                            pencil_neighbors.insert(in_brick.location.comm_rank);
+                }
+            }
+
+            DOUT << "[Rank " << my_global_rank << "] My pencil_neighbors: ";
+            for(auto r : pencil_neighbors) DOUT << r << " ";
+            DOUT << std::endl;
+
+            // 2. Gather union of all neighbor sets (across all ranks)
+            std::vector<int> my_neighbors_vec(pencil_neighbors.begin(), pencil_neighbors.end());
+            int nprocs = 0;
+            MPI_Comm_size(desc.mpi_comm, &nprocs);
+            int my_count = static_cast<int>(my_neighbors_vec.size());
+            std::vector<int> recvcounts(nprocs), displs(nprocs);
+            MPI_Allgather(&my_count, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, desc.mpi_comm);
+            int total_count = 0;
+            for(int i = 0; i < nprocs; ++i)
+            {
+                displs[i] = total_count;
+                total_count += recvcounts[i];
+            }
+            std::vector<int> all_neighbors(total_count, -1);
+            MPI_Allgatherv(my_neighbors_vec.data(), my_count, MPI_INT,
+                           all_neighbors.data(), recvcounts.data(), displs.data(),
+                           MPI_INT, desc.mpi_comm);
+
+            std::set<int> subcomm_ranks;
+            for(auto r : all_neighbors)
+                if(r >= 0) subcomm_ranks.insert(r);
+
+            DOUT << "[Rank " << my_global_rank << "] Subcomm ranks for pencil: ";
+            for(auto r : subcomm_ranks) DOUT << r << " ";
+            DOUT << std::endl;
+
+            // 3. Create subcommunicator using MPI_Group (RAII)
+            MPI_Group world_group;
+            MPI_Comm_group(desc.mpi_comm, &world_group);
+
+            std::vector<int> subcomm_vec(subcomm_ranks.begin(), subcomm_ranks.end());
+            MPI_Group pencil_group;
+            MPI_Group_incl(world_group, static_cast<int>(subcomm_vec.size()), subcomm_vec.data(), &pencil_group);
+
+            MPI_Comm tmp_comm = MPI_COMM_NULL;
+            MPI_Comm_create(desc.mpi_comm, pencil_group, &tmp_comm);
+
+            MPI_Group_free(&pencil_group);
+            MPI_Group_free(&world_group);
+
+            // Use RAII for communicator (if valid)
+            MPI_Comm_wrapper_t pencil_comm;
+            int in_pencil_comm = 0;
+            int pencil_local_rank = -1, pencil_comm_size = -1;
+            if(tmp_comm != MPI_COMM_NULL)
+            {
+                pencil_comm = MPI_Comm_wrapper_t::from_raw(tmp_comm); // static factory for raw MPI_Comm
+                in_pencil_comm = 1;
+                MPI_Comm_rank(pencil_comm, &pencil_local_rank);
+                MPI_Comm_size(pencil_comm, &pencil_comm_size);
+                DOUT << "[Rank " << my_global_rank << "] In pencil_comm: local_rank="
+                     << pencil_local_rank << " size=" << pencil_comm_size << std::endl;
+            }
+            else
+            {
+                DOUT << "[Rank " << my_global_rank << "] Not in pencil_comm" << std::endl;
+            }
+
+            MPI_Barrier(desc.mpi_comm);
+            std::vector<size_t> transposeItems;
+            GlobalTranspose(
+                elem_size,
+                currentField,
+                nextField,
+                currentBufs,
+                tempBufs,
+                currentAntecedents,
+                transposeItems,
+                transposeNumber++,
+                (in_pencil_comm ? std::move(pencil_comm) : MPI_Comm_wrapper_t{})
+            );
+            currentField = nextField;
+            currentBufs = tempBufs;
+            currentAntecedents = transposeItems;
+            MPI_Barrier(desc.mpi_comm);
+            // pencil_comm auto-frees on scope exit
         }
-    }
-    std::vector<int> my_neighbors_vec(pencil_neighbors.begin(), pencil_neighbors.end());
-    int nprocs = 0;
-    MPI_Comm_size(desc.mpi_comm, &nprocs);
-    int my_count = static_cast<int>(my_neighbors_vec.size());
-    std::vector<int> recvcounts(nprocs), displs(nprocs);
-    MPI_Allgather(&my_count, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, desc.mpi_comm);
-    int total_count = 0;
-    for(int i = 0; i < nprocs; ++i) { displs[i] = total_count; total_count += recvcounts[i]; }
-    std::vector<int> all_neighbors(total_count, -1);
-    MPI_Allgatherv(my_neighbors_vec.data(), my_count, MPI_INT,
-                   all_neighbors.data(), recvcounts.data(), displs.data(),
-                   MPI_INT, desc.mpi_comm);
-    std::set<int> subcomm_ranks;
-    for(auto r : all_neighbors) if(r >= 0) subcomm_ranks.insert(r);
 
-    // Create subcommunicator for this transpose
-    MPI_Group world_group;
-    MPI_Comm_group(desc.mpi_comm, &world_group);
-    std::vector<int> subcomm_vec(subcomm_ranks.begin(), subcomm_ranks.end());
-    MPI_Group pencil_group;
-    MPI_Group_incl(world_group, static_cast<int>(subcomm_vec.size()), subcomm_vec.data(), &pencil_group);
-    MPI_Comm tmp_comm = MPI_COMM_NULL;
-    MPI_Comm_create(desc.mpi_comm, pencil_group, &tmp_comm);
-    MPI_Group_free(&pencil_group);
-    MPI_Group_free(&world_group);
-    MPI_Comm_wrapper_t pencil_comm;
-    int in_pencil_comm = 0;
-    if(tmp_comm != MPI_COMM_NULL)
-    {
-        pencil_comm = MPI_Comm_wrapper_t::from_raw(tmp_comm);
-        in_pencil_comm = 1;
-    }
-    MPI_Barrier(desc.mpi_comm);
+        // ---- FFT in next contiguous axis
+        int contiguous_axis = -1;
+        for(int d = 0; d < 3; ++d)
+        {
+            bool all_full = true;
+            for(const auto& brick : currentField.bricks)
+                if((brick.upper[d] - brick.lower[d]) != lengths[d])
+                    all_full = false;
+            if(all_full && !fft_done[d])
+            {
+                contiguous_axis = d;
+                break;
+            }
+        }
+        assert(contiguous_axis >= 0);
 
-    // Allocate temp buffers for pencilField
-    std::vector<TempBufferLease> tempLeases;
-    std::vector<BufferPtr> tempBufs;
-    for(size_t b = 0; b < pencilField.bricks.size(); ++b)
-    {
-        tempLeases.emplace_back(
-            tempBuffers, my_global_rank, pencilField.bricks[b].location,
-            pencilField.bricks[b].count_elems(), elem_size
+        DOUT << "[Rank " << my_global_rank << "] Next FFT axis: " << contiguous_axis << std::endl;
+
+        std::vector<size_t> fftItems;
+        C2CField(
+            currentField,
+            {static_cast<size_t>(contiguous_axis)},
+            currentBufs,
+            currentBufs,
+            currentAntecedents,
+            fftItems
         );
-        tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
+        fft_done[contiguous_axis] = 1;
+        currentAntecedents = fftItems;
     }
-    std::vector<size_t> transposeItems;
-    GlobalTranspose(
-        elem_size, currentField, pencilField,
-        currentBufs, tempBufs, currentAntecedents, transposeItems,
-        transposeNumber++,
-        (in_pencil_comm ? std::move(pencil_comm) : MPI_Comm_wrapper_t{})
-    );
-    currentField = pencilField;
-    currentBufs = tempBufs;
-    currentAntecedents = transposeItems;
-    MPI_Barrier(desc.mpi_comm);
 
-    // --- 3. FFT in axis that is now contiguous (not split in pencil grid)
-    int pencil_contig_axis = -1;
-    for(int d = 0; d < 3; ++d)
-        if((d != splitA && d != splitB)) pencil_contig_axis = d;
-
-    DOUT << "[Rank " << my_global_rank << "] FFT in axis: " << pencil_contig_axis << std::endl;
-    fftItems.clear();
-    C2CField(currentField, {static_cast<size_t>(pencil_contig_axis)},
-             currentBufs, currentBufs, currentAntecedents, fftItems);
-    currentAntecedents = fftItems;
-
-    // --- 4. Transpose to output grid (slabs in output axes)
-    DOUT << "[Rank " << my_global_rank << "] Transposing to output grid\n";
-    // Subcommunicator for output grid transpose (reuse code above)
-    std::set<int> out_neighbors;
-    for(const auto& out_brick : desc.outFields.front().bricks)
-    {
-        if(out_brick.location.comm_rank == my_global_rank)
-        {
-            for(const auto& in_brick : currentField.bricks)
-                if(!in_brick.intersect(out_brick).empty())
-                    out_neighbors.insert(in_brick.location.comm_rank);
-        }
-    }
-    my_neighbors_vec.assign(out_neighbors.begin(), out_neighbors.end());
-    my_count = static_cast<int>(my_neighbors_vec.size());
-    std::fill(recvcounts.begin(), recvcounts.end(), 0);
-    MPI_Allgather(&my_count, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, desc.mpi_comm);
-    total_count = 0;
-    for(int i = 0; i < nprocs; ++i) { displs[i] = total_count; total_count += recvcounts[i]; }
-    all_neighbors.assign(total_count, -1);
-    MPI_Allgatherv(my_neighbors_vec.data(), my_count, MPI_INT,
-                   all_neighbors.data(), recvcounts.data(), displs.data(),
-                   MPI_INT, desc.mpi_comm);
-    subcomm_ranks.clear();
-    for(auto r : all_neighbors) if(r >= 0) subcomm_ranks.insert(r);
-
-    // Create subcommunicator for final transpose
-    MPI_Comm_group(desc.mpi_comm, &world_group);
-    subcomm_vec.assign(subcomm_ranks.begin(), subcomm_ranks.end());
-    MPI_Group final_group;
-    MPI_Group_incl(world_group, static_cast<int>(subcomm_vec.size()), subcomm_vec.data(), &final_group);
-    tmp_comm = MPI_COMM_NULL;
-    MPI_Comm_create(desc.mpi_comm, final_group, &tmp_comm);
-    MPI_Group_free(&final_group);
-    MPI_Group_free(&world_group);
-    MPI_Comm_wrapper_t final_comm;
-    int in_final_comm = 0;
-    if(tmp_comm != MPI_COMM_NULL)
-    {
-        final_comm = MPI_Comm_wrapper_t::from_raw(tmp_comm);
-        in_final_comm = 1;
-    }
-    MPI_Barrier(desc.mpi_comm);
-
+    // --- Final output transpose (if needed)
+    bool need_final_transpose = !(currentField.bricks == desc.outFields.front().bricks);
     std::vector<BufferPtr> outputBufs = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
     std::vector<size_t> finalTransposeItems;
-    GlobalTranspose(
-        elem_size, currentField, desc.outFields.front(),
-        currentBufs, outputBufs, currentAntecedents, finalTransposeItems,
-        transposeNumber++,
-        (in_final_comm ? std::move(final_comm) : MPI_Comm_wrapper_t{})
-    );
-    currentBufs = outputBufs;
-    currentAntecedents = finalTransposeItems;
-    currentField = desc.outFields.front();
-    MPI_Barrier(desc.mpi_comm);
+    if(need_final_transpose)
+    {
+        MPI_Barrier(desc.mpi_comm);
+        DOUT << "[Rank " << my_global_rank << "] Doing final transpose to user output grid" << std::endl;
+        GlobalTranspose(
+            elem_size,
+            currentField,
+            desc.outFields.front(),
+            currentBufs,
+            outputBufs,
+            currentAntecedents,
+            finalTransposeItems,
+            transposeNumber++
+        );
+        currentBufs = outputBufs;
+        currentAntecedents = finalTransposeItems;
+        currentField = desc.outFields.front();
+        MPI_Barrier(desc.mpi_comm);
+    }
 
-    // --- 5. FFT in the final contiguous axis (if any)
-    int final_fft_axis = -1;
-    for(int d = 0; d < 3; ++d)
-        if(std::find(out_split_axes.begin(), out_split_axes.end(), d) == out_split_axes.end())
-            final_fft_axis = d;
+    std::vector<size_t> outFFTDims;
+    for(auto d : contiguousOutputDims)
+        if(!fft_done[d])
+            outFFTDims.push_back(d);
 
-    if(final_fft_axis >= 0) {
-        DOUT << "[Rank " << my_global_rank << "] FFT in axis: " << final_fft_axis << std::endl;
-        fftItems.clear();
-        C2CField(currentField, {static_cast<size_t>(final_fft_axis)},
-                 currentBufs, currentBufs, currentAntecedents, fftItems);
-        currentAntecedents = fftItems;
+    if(!outFFTDims.empty())
+    {
+        DOUT << "[Rank " << my_global_rank << "] Final FFT dims: ";
+        for(auto d : outFFTDims) DOUT << d << " ";
+        DOUT << std::endl;
+
+        std::vector<size_t> finalFFTItems;
+        C2CField(
+            desc.outFields.front(),
+            outFFTDims,
+            outputBufs,
+            outputBufs,
+            currentAntecedents,
+            finalFFTItems
+        );
     }
 
     MPI_Barrier(desc.mpi_comm);
@@ -2738,6 +2831,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     dbg.close();
 #endif
 }
+
 
 
 
