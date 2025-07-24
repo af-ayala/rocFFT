@@ -2595,8 +2595,8 @@ const int num_split_dims_out = std::count_if(out_grid.begin(), out_grid.end(), [
 std::cout << "--num_split_dims_in: "  << num_split_dims_in << std::endl;
 std::cout << "--num_split_dims_out: " << num_split_dims_out << std::endl;
 
-std::cout << "inField bricks:" << std::endl;
-for(const auto& b : inField.bricks)
+std::cout << "desc.inFields[0] bricks:" << std::endl;
+for(const auto& b : desc.inFields[0].bricks)
 {
     std::cout << "  lower: ";
     for(auto v : b.lower) std::cout << v << " ";
@@ -2607,8 +2607,8 @@ for(const auto& b : inField.bricks)
     std::cout << std::endl;
 }
 
-std::cout << "outField bricks:" << std::endl;
-for(const auto& b : outField.bricks)
+std::cout << "desc.outFields[0] bricks:" << std::endl;
+for(const auto& b : desc.outFields[0].bricks)
 {
     std::cout << "  lower: ";
     for(auto v : b.lower) std::cout << v << " ";
