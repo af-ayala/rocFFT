@@ -2503,7 +2503,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     rocfft_field_t currentField = desc.inFields.front();
     std::vector<BufferPtr> currentBufs = inputFFTBufs;
     std::vector<size_t> currentAntecedents = inputFFTItems;
-
     std::vector<int> fft_done(3, 0);
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
@@ -2535,6 +2534,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
 
         if(currentField.bricks != nextField.bricks)
         {
+            // Allocate temp buffers for this field
             std::vector<TempBufferLease> tempLeases;
             std::vector<BufferPtr> tempBufs;
             for(size_t b = 0; b < nextField.bricks.size(); ++b)
@@ -2546,16 +2546,14 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
             }
 
-            // --- Begin NEW correct subcomm logic ---
-            // 1. Find all neighbor ranks overlapping with my nextField bricks
+            // 1. Determine overlapping ranks (subcommunicator members)
             std::set<int> pencil_neighbors;
-            for (size_t i = 0; i < nextField.bricks.size(); ++i)
+            for(const auto& out_brick : nextField.bricks)
             {
-                if(nextField.bricks[i].location.comm_rank == my_global_rank)
+                if(out_brick.location.comm_rank == my_global_rank)
                 {
-                    const auto& my_brick = nextField.bricks[i];
-                    for (const auto& in_brick : currentField.bricks)
-                        if (!in_brick.intersect(my_brick).empty())
+                    for(const auto& in_brick : currentField.bricks)
+                        if(!in_brick.intersect(out_brick).empty())
                             pencil_neighbors.insert(in_brick.location.comm_rank);
                 }
             }
@@ -2564,7 +2562,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             for(auto r : pencil_neighbors) DOUT << r << " ";
             DOUT << std::endl;
 
-            // 2. Gather all neighbor sets to union across ranks
+            // 2. Gather union of all neighbor sets (across all ranks)
             std::vector<int> my_neighbors_vec(pencil_neighbors.begin(), pencil_neighbors.end());
             int nprocs = 0;
             MPI_Comm_size(desc.mpi_comm, &nprocs);
@@ -2583,14 +2581,14 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                            MPI_INT, desc.mpi_comm);
 
             std::set<int> subcomm_ranks;
-            for (auto r : all_neighbors)
+            for(auto r : all_neighbors)
                 if(r >= 0) subcomm_ranks.insert(r);
 
             DOUT << "[Rank " << my_global_rank << "] Subcomm ranks for pencil: ";
             for(auto r : subcomm_ranks) DOUT << r << " ";
             DOUT << std::endl;
 
-            // 3. Create the subcomm
+            // 3. Create subcommunicator using MPI_Group (RAII)
             MPI_Group world_group;
             MPI_Comm_group(desc.mpi_comm, &world_group);
 
@@ -2604,16 +2602,14 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             MPI_Group_free(&pencil_group);
             MPI_Group_free(&world_group);
 
-            // Wrap the new communicator (only if valid)
+            // Use RAII for communicator (if valid)
+            MPI_Comm_wrapper_t pencil_comm;
+            int in_pencil_comm = 0;
             int pencil_local_rank = -1, pencil_comm_size = -1;
-
-            MPI_Comm_wrapper_t pencil_comm = (tmp_comm != MPI_COMM_NULL)
-                ? MPI_Comm_wrapper_t(tmp_comm) : MPI_Comm_wrapper_t{};
-            // Now pencil_comm is either a valid wrapper or empty/null.
-            int in_pencil_comm = (tmp_comm != MPI_COMM_NULL);
-
             if(tmp_comm != MPI_COMM_NULL)
             {
+                pencil_comm = MPI_Comm_wrapper_t::from_raw(tmp_comm); // static factory for raw MPI_Comm (add this to your wrapper)
+                in_pencil_comm = 1;
                 MPI_Comm_rank(pencil_comm, &pencil_local_rank);
                 MPI_Comm_size(pencil_comm, &pencil_comm_size);
                 DOUT << "[Rank " << my_global_rank << "] In pencil_comm: local_rank="
@@ -2624,7 +2620,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 DOUT << "[Rank " << my_global_rank << "] Not in pencil_comm" << std::endl;
             }
 
-            // 4. Transpose using this subcomm if you are in it
             MPI_Barrier(desc.mpi_comm);
             std::vector<size_t> transposeItems;
             GlobalTranspose(
@@ -2642,10 +2637,10 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             currentBufs = tempBufs;
             currentAntecedents = transposeItems;
             MPI_Barrier(desc.mpi_comm);
-            // pencil_comm will free itself when out of scope
+            // pencil_comm auto-frees on scope exit
         }
 
-        // ---- Find which axis is **contiguous** now (that is, NOT split)
+        // ---- FFT in next contiguous axis
         int contiguous_axis = -1;
         for(int d = 0; d < 3; ++d)
         {
@@ -2676,7 +2671,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         currentAntecedents = fftItems;
     }
 
-    // Last: Are we at the user output grid?
+    // --- Final output transpose (if needed)
     bool need_final_transpose = !(currentField.bricks == desc.outFields.front().bricks);
     std::vector<BufferPtr> outputBufs = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
     std::vector<size_t> finalTransposeItems;
@@ -2730,6 +2725,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     dbg.close();
 #endif
 }
+
 
 
 
