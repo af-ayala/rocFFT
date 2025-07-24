@@ -2360,89 +2360,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
 }
 
 
-rocfft_field_t MakeFieldWith2DSplit(
-    const rocfft_field_t& base,
-    const std::vector<size_t>& length,
-    int splitAxis0, int splitAxis1)
-{
-    size_t numBricks = base.bricks.size();
-    int splits0 = 0, splits1 = 0;
-
-    // Infer grid shape from number of ranks and desired axes.
-    // For example: if numBricks = 4, splitAxis0 = 0, splitAxis1 = 1, splits0=splits1=2
-    for(int d=0; d<3; ++d) {
-        if(d == splitAxis0) splits0 = infer_grid_from_bricks(base.bricks)[d];
-        if(d == splitAxis1) splits1 = infer_grid_from_bricks(base.bricks)[d];
-    }
-    if(splits0==0) splits0=1;
-    if(splits1==0) splits1=1;
-
-    rocfft_field_t out = base;
-    for(size_t i=0; i<numBricks; ++i) {
-        auto& brick = out.bricks[i];
-        std::fill(brick.lower.begin(), brick.lower.end(), 0);
-        brick.upper = length;
-
-        // 2D index within the grid
-        size_t idx0 = i / splits1;
-        size_t idx1 = i % splits1;
-
-        brick.lower[splitAxis0] = length[splitAxis0] / splits0 * idx0;
-        brick.upper[splitAxis0] = length[splitAxis0] / splits0 * (idx0 + 1);
-
-        brick.lower[splitAxis1] = length[splitAxis1] / splits1 * idx1;
-        brick.upper[splitAxis1] = length[splitAxis1] / splits1 * (idx1 + 1);
-
-        // Stride logic (as before)
-        auto brickLength = brick.length();
-        size_t dist = 1;
-        for(size_t s=0; s<brick.stride.size(); ++s) {
-            brick.stride[s] = dist;
-            dist *= brickLength[s];
-        }
-    }
-    return out;
-}
-
-// For slabs (2D split)
-rocfft_field_t MakeFieldWithSlabs(const rocfft_field_t& base, const std::vector<size_t>& length, int splitAxis0, int splitAxis1)
-{
-    size_t numBricks = base.bricks.size();
-    rocfft_field_t out = base;
-    size_t splits[3] = {1,1,1};
-    // For a 2D split, e.g. splits[0]=2, splits[1]=2 for 4 ranks
-    // Choose splits to multiply up to numBricks
-    // (user responsibility: pass in correct axes)
-    splits[splitAxis0] = 2;  // e.g. 2 slabs in X
-    splits[splitAxis1] = numBricks / splits[splitAxis0]; // e.g. 2 in Y
-
-    for(size_t i = 0; i < numBricks; ++i)
-    {
-        auto& brick = out.bricks[i];
-        std::fill(brick.lower.begin(), brick.lower.end(), 0);
-        brick.upper = length;
-
-        size_t idx0 = i / splits[splitAxis1];
-        size_t idx1 = i % splits[splitAxis1];
-        brick.lower[splitAxis0] = length[splitAxis0] / splits[splitAxis0] * idx0;
-        brick.upper[splitAxis0] = length[splitAxis0] / splits[splitAxis0] * (idx0+1);
-        brick.lower[splitAxis1] = length[splitAxis1] / splits[splitAxis1] * idx1;
-        brick.upper[splitAxis1] = length[splitAxis1] / splits[splitAxis1] * (idx1+1);
-
-        // Update stride
-        auto brickLength = brick.length();
-        size_t dist = 1;
-        for(size_t s = 0; s < brick.stride.size(); ++s)
-        {
-            brick.stride[s] = dist;
-            dist *= brickLength[s];
-        }
-    }
-    return out;
-}
-
-// For pencils (1D split)
-rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t& base, const std::vector<size_t>& length, int splitAxis)
+rocfft_field_t MakeFieldWithSlabSplit(const rocfft_field_t& base, const std::vector<size_t>& length, int splitAxis)
 {
     size_t numBricks = base.bricks.size();
     rocfft_field_t out = base;
@@ -2472,30 +2390,50 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t& base, const std::v
 }
 
 
-// given splitDims (of size 2), returns a field where those two dims are split, and the other is contiguous
-rocfft_field_t MakeFieldWithSplit(const rocfft_field_t& base, const std::vector<size_t>& length, const std::vector<size_t>& splitDims)
+rocfft_field_t MakeFieldWithPencilSplit(const std::vector<size_t>& lengthsWithBatch, int axis_entire, int nprocs)
 {
-    size_t numBricks = base.bricks.size();
-    rocfft_field_t out = base;
-    // Set up splitting logic for two split dims
-    size_t splits[3] = {1,1,1};
-    splits[splitDims[0]] = 2;
-    splits[splitDims[1]] = numBricks / 2;
-    for(size_t i = 0; i < numBricks; ++i)
+    // Find best balanced P*Q=nprocs
+    int P = 1, Q = nprocs;
+    for(int f = 1; f <= nprocs; ++f)
     {
-        auto& brick = out.bricks[i];
-        std::fill(brick.lower.begin(), brick.lower.end(), 0);
-        brick.upper = length;
+        if(nprocs % f == 0)
+        {
+            int q = nprocs / f;
+            if(std::abs(f - q) < std::abs(P - Q)) // Pick most balanced
+            {
+                P = f; Q = q;
+            }
+        }
+    }
 
-        size_t idx0 = i / splits[splitDims[1]];
-        size_t idx1 = i % splits[splitDims[1]];
-        brick.lower[splitDims[0]] = length[splitDims[0]] / splits[splitDims[0]] * idx0;
-        brick.upper[splitDims[0]] = length[splitDims[0]] / splits[splitDims[0]] * (idx0+1);
-        brick.lower[splitDims[1]] = length[splitDims[1]] / splits[splitDims[1]] * idx1;
-        brick.upper[splitDims[1]] = length[splitDims[1]] / splits[splitDims[1]] * (idx1+1);
+    int split_axis0 = (axis_entire + 1) % 3;
+    int split_axis1 = (axis_entire + 2) % 3;
 
-        // Strides logic (reused from MakeFieldDimContiguous)
-        auto brickLength = brick.length();
+    rocfft_field_t out;
+    out.bricks.resize(nprocs);
+
+    for(int r = 0; r < nprocs; ++r)
+    {
+        auto& brick = out.bricks[r];
+        brick.lower = std::vector<size_t>(lengthsWithBatch.size(), 0);
+        brick.upper = lengthsWithBatch;
+
+        int idx0 = r / Q;
+        int idx1 = r % Q;
+
+        brick.lower[split_axis0] = lengthsWithBatch[split_axis0] * idx0 / P;
+        brick.upper[split_axis0] = lengthsWithBatch[split_axis0] * (idx0 + 1) / P;
+
+        brick.lower[split_axis1] = lengthsWithBatch[split_axis1] * idx1 / Q;
+        brick.upper[split_axis1] = lengthsWithBatch[split_axis1] * (idx1 + 1) / Q;
+
+        // axis_entire stays full [0, N)
+        brick.location.comm_rank = r;
+        // brick.location.dev = ... // Set as needed
+
+        // Compute strides
+        brick.stride.resize(lengthsWithBatch.size(), 1);
+        auto brickLength = brick.length(); // (upper-lower) per dim
         size_t dist = 1;
         for(size_t s = 0; s < brick.stride.size(); ++s)
         {
@@ -2505,6 +2443,8 @@ rocfft_field_t MakeFieldWithSplit(const rocfft_field_t& base, const std::vector<
     }
     return out;
 }
+
+
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
