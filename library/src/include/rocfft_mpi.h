@@ -40,6 +40,8 @@ public:
     {
         return mpi_comm;
     }
+    
+    MPI_Comm_wrapper_t(MPI_Comm c) { mpi_comm = c; }
 
     // copy, duplicating the communicator
     MPI_Comm_wrapper_t(const MPI_Comm_wrapper_t& other)
