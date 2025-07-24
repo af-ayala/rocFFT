@@ -2440,6 +2440,49 @@ rocfft_field_t MakeFieldWithPencilSplit(
 }
 
 
+rocfft_field_t MakeFieldWith2DSplit(
+    const rocfft_field_t& base,
+    const std::vector<size_t>& length,
+    int splitAxis0, int splitAxis1)
+{
+    size_t numBricks = base.bricks.size();
+    int splits0 = 0, splits1 = 0;
+
+    // Infer grid shape from number of ranks and desired axes.
+    // For example: if numBricks = 4, splitAxis0 = 0, splitAxis1 = 1, splits0=splits1=2
+    for(int d=0; d<3; ++d) {
+        if(d == splitAxis0) splits0 = infer_grid_from_bricks(base.bricks)[d];
+        if(d == splitAxis1) splits1 = infer_grid_from_bricks(base.bricks)[d];
+    }
+    if(splits0==0) splits0=1;
+    if(splits1==0) splits1=1;
+
+    rocfft_field_t out = base;
+    for(size_t i=0; i<numBricks; ++i) {
+        auto& brick = out.bricks[i];
+        std::fill(brick.lower.begin(), brick.lower.end(), 0);
+        brick.upper = length;
+
+        // 2D index within the grid
+        size_t idx0 = i / splits1;
+        size_t idx1 = i % splits1;
+
+        brick.lower[splitAxis0] = length[splitAxis0] / splits0 * idx0;
+        brick.upper[splitAxis0] = length[splitAxis0] / splits0 * (idx0 + 1);
+
+        brick.lower[splitAxis1] = length[splitAxis1] / splits1 * idx1;
+        brick.upper[splitAxis1] = length[splitAxis1] / splits1 * (idx1 + 1);
+
+        // Stride logic (as before)
+        auto brickLength = brick.length();
+        size_t dist = 1;
+        for(size_t s=0; s<brick.stride.size(); ++s) {
+            brick.stride[s] = dist;
+            dist *= brickLength[s];
+        }
+    }
+    return out;
+}
 
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
