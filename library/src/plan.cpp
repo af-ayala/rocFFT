@@ -2665,6 +2665,23 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         // Only one axis being split at a time for pencils:
         rocfft_field_t nextField = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, pencil_axis);
 
+        std::cout << "___*___ nextField bricks:" << std::endl;
+        for(const auto& b : nextField.bricks)
+        {
+            std::cout << "  lower: ";
+            for(auto v : b.lower) std::cout << v << " ";
+            std::cout << "  upper: ";
+            for(auto v : b.upper) std::cout << v << " ";
+            std::cout << "  rank: " << b.location.comm_rank;
+            std::cout << "  dev: " << b.location.device;
+            std::cout << std::endl;
+        }
+
+        std::array<int, 3> nf_grid = infer_grid_from_bricks(nextField.bricks);
+        std::cout << "___*___  nextField grid: "
+                << nf_grid[0] << " " << nf_grid[1] << " " << nf_grid[2] << std::endl;
+
+
         DOUT << "[Rank " << my_global_rank << "] Step " << step
              << ", Pencil axis: " << pencil_axis << std::endl;
 
