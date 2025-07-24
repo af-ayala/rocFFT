@@ -2482,6 +2482,8 @@ const int num_split_dims_out = std::count_if(out_grid.begin(), out_grid.end(), [
 std::cout << "--num_split_dims_in: "  << num_split_dims_in << std::endl;
 std::cout << "--num_split_dims_out: " << num_split_dims_out << std::endl;
 
+
+
 #define USE_FILE_LOG 0  // set to 1 for per-rank file logging
 
 if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
@@ -2545,7 +2547,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             }
 
             // --- Begin NEW correct subcomm logic ---
-
             // 1. Find all neighbor ranks overlapping with my nextField bricks
             std::set<int> pencil_neighbors;
             for (size_t i = 0; i < nextField.bricks.size(); ++i)
@@ -2567,7 +2568,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             std::vector<int> my_neighbors_vec(pencil_neighbors.begin(), pencil_neighbors.end());
             int nprocs = 0;
             MPI_Comm_size(desc.mpi_comm, &nprocs);
-            int my_count = my_neighbors_vec.size();
+            int my_count = static_cast<int>(my_neighbors_vec.size());
             std::vector<int> recvcounts(nprocs), displs(nprocs);
             MPI_Allgather(&my_count, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, desc.mpi_comm);
             int total_count = 0;
@@ -2592,16 +2593,25 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             // 3. Create the subcomm
             MPI_Group world_group;
             MPI_Comm_group(desc.mpi_comm, &world_group);
+
             std::vector<int> subcomm_vec(subcomm_ranks.begin(), subcomm_ranks.end());
             MPI_Group pencil_group;
-            MPI_Group_incl(world_group, subcomm_vec.size(), subcomm_vec.data(), &pencil_group);
-            MPI_Comm pencil_comm = MPI_COMM_NULL;
-            MPI_Comm_create(desc.mpi_comm, pencil_group, &pencil_comm);
+            MPI_Group_incl(world_group, static_cast<int>(subcomm_vec.size()), subcomm_vec.data(), &pencil_group);
 
-            int in_pencil_comm = (pencil_comm != MPI_COMM_NULL);
+            MPI_Comm tmp_comm = MPI_COMM_NULL;
+            MPI_Comm_create(desc.mpi_comm, pencil_group, &tmp_comm);
+
+            MPI_Group_free(&pencil_group);
+            MPI_Group_free(&world_group);
+
+            // Wrap the new communicator (only if valid)
+            MPI_Comm_wrapper_t pencil_comm;
+            int in_pencil_comm = 0;
             int pencil_local_rank = -1, pencil_comm_size = -1;
-            if(in_pencil_comm)
+            if(tmp_comm != MPI_COMM_NULL)
             {
+                pencil_comm = MPI_Comm_wrapper_t(tmp_comm); // wrapper takes ownership
+                in_pencil_comm = 1;
                 MPI_Comm_rank(pencil_comm, &pencil_local_rank);
                 MPI_Comm_size(pencil_comm, &pencil_comm_size);
                 DOUT << "[Rank " << my_global_rank << "] In pencil_comm: local_rank="
@@ -2624,18 +2634,13 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 currentAntecedents,
                 transposeItems,
                 transposeNumber++,
-                (in_pencil_comm ? MPI_Comm_wrapper_t(pencil_comm) : MPI_Comm_wrapper_t{})
+                (in_pencil_comm ? std::move(pencil_comm) : MPI_Comm_wrapper_t{})
             );
             currentField = nextField;
             currentBufs = tempBufs;
             currentAntecedents = transposeItems;
             MPI_Barrier(desc.mpi_comm);
-
-            MPI_Group_free(&pencil_group);
-            MPI_Group_free(&world_group);
-            if(pencil_comm != MPI_COMM_NULL)
-                MPI_Comm_free(&pencil_comm);
-            // --- End NEW correct subcomm logic ---
+            // pencil_comm will free itself when out of scope
         }
 
         // ---- Find which axis is **contiguous** now (that is, NOT split)
@@ -2723,8 +2728,6 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     dbg.close();
 #endif
 }
-
-
 
 
 
