@@ -2359,29 +2359,32 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     outputItems = unpack_ops;
 }
 
-// given splitDims (of size 2), returns a field where those two dims are split, and the other is contiguous
-rocfft_field_t MakeFieldWithSplit(const rocfft_field_t& base, const std::vector<size_t>& length, const std::vector<size_t>& splitDims)
+// For slabs (2D split)
+rocfft_field_t MakeFieldWithSlabsSplit(const rocfft_field_t& base, const std::vector<size_t>& length, int splitAxis0, int splitAxis1)
 {
     size_t numBricks = base.bricks.size();
     rocfft_field_t out = base;
-    // Set up splitting logic for two split dims
     size_t splits[3] = {1,1,1};
-    splits[splitDims[0]] = 2;
-    splits[splitDims[1]] = numBricks / 2;
+    // For a 2D split, e.g. splits[0]=2, splits[1]=2 for 4 ranks
+    // Choose splits to multiply up to numBricks
+    // (user responsibility: pass in correct axes)
+    splits[splitAxis0] = 2;  // e.g. 2 slabs in X
+    splits[splitAxis1] = numBricks / splits[splitAxis0]; // e.g. 2 in Y
+
     for(size_t i = 0; i < numBricks; ++i)
     {
         auto& brick = out.bricks[i];
         std::fill(brick.lower.begin(), brick.lower.end(), 0);
         brick.upper = length;
 
-        size_t idx0 = i / splits[splitDims[1]];
-        size_t idx1 = i % splits[splitDims[1]];
-        brick.lower[splitDims[0]] = length[splitDims[0]] / splits[splitDims[0]] * idx0;
-        brick.upper[splitDims[0]] = length[splitDims[0]] / splits[splitDims[0]] * (idx0+1);
-        brick.lower[splitDims[1]] = length[splitDims[1]] / splits[splitDims[1]] * idx1;
-        brick.upper[splitDims[1]] = length[splitDims[1]] / splits[splitDims[1]] * (idx1+1);
+        size_t idx0 = i / splits[splitAxis1];
+        size_t idx1 = i % splits[splitAxis1];
+        brick.lower[splitAxis0] = length[splitAxis0] / splits[splitAxis0] * idx0;
+        brick.upper[splitAxis0] = length[splitAxis0] / splits[splitAxis0] * (idx0+1);
+        brick.lower[splitAxis1] = length[splitAxis1] / splits[splitAxis1] * idx1;
+        brick.upper[splitAxis1] = length[splitAxis1] / splits[splitAxis1] * (idx1+1);
 
-        // Strides logic (reused from MakeFieldDimContiguous)
+        // Update stride
         auto brickLength = brick.length();
         size_t dist = 1;
         for(size_t s = 0; s < brick.stride.size(); ++s)
@@ -2392,6 +2395,38 @@ rocfft_field_t MakeFieldWithSplit(const rocfft_field_t& base, const std::vector<
     }
     return out;
 }
+
+// For pencils (1D split)
+rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t& base, const std::vector<size_t>& length, int splitAxis)
+{
+    size_t numBricks = base.bricks.size();
+    rocfft_field_t out = base;
+    size_t splits[3] = {1,1,1};
+    splits[splitAxis] = numBricks;
+
+    for(size_t i = 0; i < numBricks; ++i)
+    {
+        auto& brick = out.bricks[i];
+        std::fill(brick.lower.begin(), brick.lower.end(), 0);
+        brick.upper = length;
+
+        size_t idx = i;
+        brick.lower[splitAxis] = length[splitAxis] / splits[splitAxis] * idx;
+        brick.upper[splitAxis] = length[splitAxis] / splits[splitAxis] * (idx+1);
+
+        // Update stride
+        auto brickLength = brick.length();
+        size_t dist = 1;
+        for(size_t s = 0; s < brick.stride.size(); ++s)
+        {
+            brick.stride[s] = dist;
+            dist *= brickLength[s];
+        }
+    }
+    return out;
+}
+
+
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
@@ -2519,18 +2554,12 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     for(size_t step = 0; step < pencilize_axes.size(); ++step)
     {
         int pencil_axis = pencilize_axes[step];
-        std::vector<size_t> splitDims;
-        for(int d = 0; d < 3; ++d)
-            if(fft_done[d] || d == pencil_axis)
-                splitDims.push_back(d);
 
-        rocfft_field_t nextField = MakeFieldWithSplit(currentField, lengthsWithBatch, splitDims);
+        // Only one axis being split at a time for pencils:
+        rocfft_field_t nextField = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, pencil_axis);
 
         DOUT << "[Rank " << my_global_rank << "] Step " << step
-             << ", Pencil axis: " << pencil_axis
-             << ", splitDims: ";
-        for(auto d : splitDims) DOUT << d << " ";
-        DOUT << std::endl;
+             << ", Pencil axis: " << pencil_axis << std::endl;
 
         if(currentField.bricks != nextField.bricks)
         {
@@ -2608,7 +2637,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             int pencil_local_rank = -1, pencil_comm_size = -1;
             if(tmp_comm != MPI_COMM_NULL)
             {
-                pencil_comm = MPI_Comm_wrapper_t::from_raw(tmp_comm); // static factory for raw MPI_Comm (add this to your wrapper)
+                pencil_comm = MPI_Comm_wrapper_t::from_raw(tmp_comm); // static factory for raw MPI_Comm
                 in_pencil_comm = 1;
                 MPI_Comm_rank(pencil_comm, &pencil_local_rank);
                 MPI_Comm_size(pencil_comm, &pencil_comm_size);
@@ -2725,6 +2754,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     dbg.close();
 #endif
 }
+
 
 
 
