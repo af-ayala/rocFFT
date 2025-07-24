@@ -2608,10 +2608,14 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             MPI_Comm_wrapper_t pencil_comm;
             int in_pencil_comm = 0;
             int pencil_local_rank = -1, pencil_comm_size = -1;
+
+            MPI_Comm_wrapper_t pencil_comm = (tmp_comm != MPI_COMM_NULL)
+                ? MPI_Comm_wrapper_t(tmp_comm) : MPI_Comm_wrapper_t{};
+            // Now pencil_comm is either a valid wrapper or empty/null.
+            int in_pencil_comm = (tmp_comm != MPI_COMM_NULL);
+
             if(tmp_comm != MPI_COMM_NULL)
             {
-                pencil_comm = MPI_Comm_wrapper_t(tmp_comm); // wrapper takes ownership
-                in_pencil_comm = 1;
                 MPI_Comm_rank(pencil_comm, &pencil_local_rank);
                 MPI_Comm_size(pencil_comm, &pencil_comm_size);
                 DOUT << "[Rank " << my_global_rank << "] In pencil_comm: local_rank="
