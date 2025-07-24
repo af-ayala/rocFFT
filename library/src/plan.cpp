@@ -2397,34 +2397,48 @@ rocfft_field_t MakeFieldWithSlabsSplit(const rocfft_field_t& base, const std::ve
 }
 
 // For pencils (1D split)
-rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t& base, const std::vector<size_t>& length, int splitAxis)
+rocfft_field_t MakeFieldWithPencilSplit(
+    const rocfft_field_t& base,
+    const std::vector<size_t>& length,
+    int pencil_axis)
 {
-    size_t numBricks = base.bricks.size();
     rocfft_field_t out = base;
-    size_t splits[3] = {1,1,1};
-    splits[splitAxis] = numBricks;
+    size_t nranks = base.bricks.size();
 
-    for(size_t i = 0; i < numBricks; ++i)
+    // Determine which axis was previously split, other than pencil_axis
+    int prev_split_axis = -1;
+    for (int ax = 0; ax < 3; ++ax)
+        if (ax != pencil_axis)
+            if (base.bricks[0].upper[ax] != base.bricks[0].lower[ax])
+                prev_split_axis = ax;
+
+    // We want to create a pencil grid: split prev_split_axis and pencil_axis
+    // For 4 ranks: split dims = [2,1,2] or [1,2,2] depending on axes
+    // Figure out which ranks should own which pencils
+
+    // Calculate splits for each axis
+    size_t splits[3] = {1,1,1};
+    splits[prev_split_axis] = 2;
+    splits[pencil_axis] = 2;
+
+    // Now assign brick ranges for each rank
+    for(size_t r = 0; r < nranks; ++r)
     {
-        auto& brick = out.bricks[i];
+        auto& brick = out.bricks[r];
         std::fill(brick.lower.begin(), brick.lower.end(), 0);
         brick.upper = length;
 
-        size_t idx = i;
-        brick.lower[splitAxis] = length[splitAxis] / splits[splitAxis] * idx;
-        brick.upper[splitAxis] = length[splitAxis] / splits[splitAxis] * (idx+1);
-
-        // Update stride
-        auto brickLength = brick.length();
-        size_t dist = 1;
-        for(size_t s = 0; s < brick.stride.size(); ++s)
-        {
-            brick.stride[s] = dist;
-            dist *= brickLength[s];
-        }
+        // 2D index: (i, j) where i is along prev_split_axis, j along pencil_axis
+        size_t i = r / splits[pencil_axis];
+        size_t j = r % splits[pencil_axis];
+        brick.lower[prev_split_axis] = length[prev_split_axis] / splits[prev_split_axis] * i;
+        brick.upper[prev_split_axis] = length[prev_split_axis] / splits[prev_split_axis] * (i+1);
+        brick.lower[pencil_axis] = length[pencil_axis] / splits[pencil_axis] * j;
+        brick.upper[pencil_axis] = length[pencil_axis] / splits[pencil_axis] * (j+1);
     }
     return out;
 }
+
 
 
 
