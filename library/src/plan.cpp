@@ -2654,7 +2654,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             pencilize_axes.push_back(axis);
     }
 
-    DOUT << "[Rank " << my_global_rank << "] My pencilize_axes: ";
+    DOUT << "\n[Rank " << my_global_rank << "] My pencilize_axes: ";
     for(auto r : pencilize_axes) DOUT << r << " ";
     DOUT << std::endl;
 
