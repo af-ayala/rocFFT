@@ -937,12 +937,9 @@ MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
     MPI_Comm_rank(plan->desc.mpi_comm, &myrank);
     MPI_Comm_size(plan->desc.mpi_comm, &nprocs);
 
-    const auto local_comm_rank = get_local_comm_rank();
-    const auto local_comm_size = get_local_comm_size();
+std::cout <<  "uniform_counts inside ExecuteAsync rank " << myrank << std::endl;
 
-std::cout <<  "uniform_counts inside ExecuteAsync rank " << myrank << " rank get " <<  local_comm_rank << std::endl;
-
-std::cout <<  "uniform_counts inside ExecuteAsync nrpocs " << nprocs << " get_local_comm_size get " <<  local_comm_size << std::endl;
+std::cout <<  "uniform_counts inside ExecuteAsync nrpocs " << nprocs << std::endl;
 
 std::cout << "my rank : " myrank <<  "@*# uniform_counts: " << uniform_counts << std::endl;
 std::cout << "my rank :" << "@*#sendCounts: ";
