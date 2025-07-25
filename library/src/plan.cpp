@@ -2687,39 +2687,10 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             for(auto r : pencil_neighbors) DOUT << r << " ";
             DOUT << std::endl;
 
-            // 2. Gather union of all neighbor sets (across all ranks)
-            // std::vector<int> my_neighbors_vec(pencil_neighbors.begin(), pencil_neighbors.end());
-            // int nprocs = 0;
-            // MPI_Comm_size(desc.mpi_comm, &nprocs);
-            // int my_count = static_cast<int>(my_neighbors_vec.size());
-            // std::vector<int> recvcounts(nprocs), displs(nprocs);
-            // MPI_Allgather(&my_count, 1, MPI_INT, recvcounts.data(), 1, MPI_INT, desc.mpi_comm);
-            // int total_count = 0;
-            // for(int i = 0; i < nprocs; ++i)
-            // {
-            //     displs[i] = total_count;
-            //     total_count += recvcounts[i];
-            // }
-            // std::vector<int> all_neighbors(total_count, -1);
-            // MPI_Allgatherv(my_neighbors_vec.data(), my_count, MPI_INT,
-            //                all_neighbors.data(), recvcounts.data(), displs.data(),
-            //                MPI_INT, desc.mpi_comm);
-
-            // std::set<int> subcomm_ranks;
-            // for(auto r : all_neighbors)
-            //     if(r >= 0) subcomm_ranks.insert(r);
-            // std::vector<int> subcomm_vec(pencil_neighbors.begin(), pencil_neighbors.end());
-            // std::set<int> subcomm_ranks = pencil_neighbors;
-
-            // DOUT << "[Rank " << my_global_rank << "] Subcomm ranks for pencil: ";
-            // for(auto r : subcomm_ranks) DOUT << r << " ";
-            // DOUT << std::endl;
-
-            // 3. Create subcommunicator using MPI_Group (RAII)
+            // create subcommunicator using MPI_Group (RAII)
             MPI_Group world_group;
             MPI_Comm_group(desc.mpi_comm, &world_group);
 
-            // std::vector<int> subcomm_vec(subcomm_ranks.begin(), subcomm_ranks.end());
             std::vector<int> subcomm_vec(pencil_neighbors.begin(), pencil_neighbors.end());
 
             MPI_Group pencil_group;
@@ -2737,7 +2708,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             int pencil_local_rank = -1, pencil_comm_size = -1;
             if(tmp_comm != MPI_COMM_NULL)
             {
-                pencil_comm = MPI_Comm_wrapper_t::from_raw(tmp_comm); // static factory for raw MPI_Comm
+                pencil_comm = MPI_Comm_wrapper_t::from_raw(tmp_comm);
                 in_pencil_comm = 1;
                 MPI_Comm_rank(pencil_comm, &pencil_local_rank);
                 MPI_Comm_size(pencil_comm, &pencil_comm_size);

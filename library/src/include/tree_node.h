@@ -1475,6 +1475,8 @@ private:
     const std::vector<size_t> recvOffsets;
     const std::vector<size_t> recvCounts;
 
+    size_t sendUniformCount;
+
     // send/receive buffers
     const BufferPtr sendBuf;
     const BufferPtr recvBuf;
