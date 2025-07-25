@@ -2431,16 +2431,16 @@ rocfft_field_t MakeFieldWithPencilSplit(
     out.bricks.resize( nprocs );
 
     // Distribute location/device assignments round-robin
-    for(size_t i = 0; i < nprocs; ++i)
+    for(int i = 0; i < nprocs; ++i)
     {
         auto& brick = out.bricks[i];
 
         // Compute 2D (p, q) indices for this brick
-        size_t p = i / Q;
-        size_t q = i % Q;
+        int p = i / Q;
+        int q = i % Q;
 
         // Set bounds for each axis
-        for(size_t d = 0; d < ndim; ++d)
+        for(int d = 0; d < ndim; ++d)
         {
             brick.lower[d] = 0;
             brick.upper[d] = lengthsWithBatch[d];
@@ -2449,8 +2449,8 @@ rocfft_field_t MakeFieldWithPencilSplit(
         int axis_p = split_axes[0];
         int axis_q = split_axes[1];
 
-        size_t len_p = lengthsWithBatch[axis_p];
-        size_t len_q = lengthsWithBatch[axis_q];
+        int len_p = lengthsWithBatch[axis_p];
+        int len_q = lengthsWithBatch[axis_q];
         brick.lower[axis_p] = len_p * p / P;
         brick.upper[axis_p] = len_p * (p+1) / P;
         brick.lower[axis_q] = len_q * q / Q;
@@ -2459,8 +2459,8 @@ rocfft_field_t MakeFieldWithPencilSplit(
 
         // Contiguous strides
         auto brickLength = brick.length();
-        size_t dist = 1;
-        for(size_t s = 0; s < brick.stride.size(); ++s)
+        int dist = 1;
+        for(int s = 0; s < brick.stride.size(); ++s)
         {
             brick.stride[s] = dist;
             dist *= brickLength[s];
