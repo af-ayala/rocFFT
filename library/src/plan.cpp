@@ -2613,21 +2613,18 @@ if(can_pencil_alltoall)
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
 
-    std::cout << "[Rank " << my_global_rank << "] My fft_done : ";
-    for(auto r : fft_done ) std::cout << r << " " << "communicator size = " << nprocs << std::endl;
+    std::cout << "[Rank " << my_global_rank << "] ffts done before for-loop : ";
+    for(auto r : fft_done ) std::cout << r << " ";
+    std::cout << std::endl;
     
     std::vector<int> pencilize_axes;
     for(int axis = 0; axis < 3; ++axis)
     {
         // if FFT not yet done, and axis is SPLIT at output, pencilize;
-        // otherwise, the FFT in [axis] will be performed as a last step
+        // otherwise, the FFT in [axis] dimension will be performed as the final step
         if(!fft_done[axis] && DimensionSplitInField(lengths[axis], axis, desc.outFields.front()))
             pencilize_axes.push_back(axis);
     }
-
-    std::cout << "\n[Rank " << my_global_rank << "] My pencilize_axes: ";
-    for(auto r : pencilize_axes) std::cout << r << " ";
-    std::cout << std::endl;
 
     for(size_t step = 0; step < pencilize_axes.size(); ++step)
     {
@@ -2655,6 +2652,7 @@ if(can_pencil_alltoall)
         std::cout << "___*___  nextField grid: "
                 << nf_grid[0] << " " << nf_grid[1] << " " << nf_grid[2] << std::endl;
 
+        // perform global transposition
         if(currentField.bricks != nextField.bricks)
         {
             // allocate temp buffers for this field
@@ -2742,38 +2740,21 @@ if(can_pencil_alltoall)
             MPI_Barrier(desc.mpi_comm);
         }
 
-        // ---- FFT in next contiguous axis
-        int contiguous_axis = -1;
-        for(int d = 0; d < 3; ++d)
-        {
-            bool all_full = true;
-            for(const auto& brick : currentField.bricks)
-                if((brick.upper[d] - brick.lower[d]) != lengths[d])
-                    all_full = false;
-            if(all_full && !fft_done[d])
-            {
-                contiguous_axis = d;
-                break;
-            }
-        }
-        assert(contiguous_axis >= 0);
-
-        std::cout << "[Rank " << my_global_rank << "] Next FFT axis: " << contiguous_axis << std::endl;
-
+        // once data is transposed, perform intermediate FFT
         std::vector<size_t> fftItems;
         C2CField(
             currentField,
-            {static_cast<size_t>(contiguous_axis)},
+            {static_cast<size_t>(pencil_axis)},
             currentBufs,
             currentBufs,
             currentAntecedents,
             fftItems
         );
-        fft_done[contiguous_axis] = 1;
+        fft_done[pencil_axis] = 1;
         currentAntecedents = fftItems;
     }
 
-    // --- Final output transpose (if needed)
+    // transpose to output shape (if needed)
     bool need_final_transpose = !(currentField.bricks == desc.outFields.front().bricks);
     std::vector<BufferPtr> outputBufs = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
     std::vector<size_t> finalTransposeItems;
@@ -2797,11 +2778,11 @@ if(can_pencil_alltoall)
         MPI_Barrier(desc.mpi_comm);
     }
 
+    // remaining local FFTs
     std::vector<size_t> outFFTDims;
     for(auto d : contiguousOutputDims)
         if(!fft_done[d])
             outFFTDims.push_back(d);
-
     if(!outFFTDims.empty())
     {
         std::cout << "[Rank " << my_global_rank << "] Final FFT dims: ";
@@ -2827,8 +2808,6 @@ if(can_pencil_alltoall)
     dbg.close();
 #endif
 }
-
-
 
 
     else
