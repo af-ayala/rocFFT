@@ -2282,7 +2282,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     // check if uniform exchange to use MPI_Alltoall
 
 bool uniform_counts = false;
-bool uniform_in_subcomm = false;
+// bool uniform_in_subcomm = false;
 
 // if(!subcomm)
 // {
@@ -2580,10 +2580,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     std::cout << "--descoutgrid desc.outFields[0]: "
             << out_grid[0] << " " << out_grid[1] << " " << out_grid[2] << std::endl;
 
-    // count number of split dims in input and output grids
-    const int num_split_dims_in  = std::count_if(in_grid.begin(),  in_grid.end(),  [](int n){ return n > 1; });
-    const int num_split_dims_out = std::count_if(out_grid.begin(), out_grid.end(), [](int n){ return n > 1; });
-
     auto is_permutation = [](const std::array<int,3>& a, const std::array<int,3>& b)
     {
         std::array<int,3> x = a, y = b;
@@ -2592,6 +2588,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         return x == y;
     };
 
+    // count number of split dims in input and output grids
     const int num_split_dims_in  = std::count_if(in_grid.begin(),  in_grid.end(),  [](int n){ return n > 1; });
     const int num_split_dims_out = std::count_if(out_grid.begin(), out_grid.end(), [](int n){ return n > 1; });
 
