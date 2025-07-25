@@ -940,7 +940,7 @@ MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
 std::cout <<  "inside ExecuteAsync nrpocs " << nprocs << std::endl;
 std::cout << "rank : [" << myrank <<  "] uniform_counts: " << uniform_counts << std::endl;
 std::cout << "rank : [ " << myrank << "] : "  << sendCounts[0] << " "  << sendCounts[1] << " "  << sendCounts[2] << " "  << sendCounts[3] <<std::endl;
-std::cout << "rank : [ " << myrank << "] : "  << recvCounts[0] << " "  << recvCounts[1] << " "  << recvCounts[2] << " "  << recv_counts[3] <<std::endl;
+std::cout << "rank : [ " << myrank << "] : "  << recvCounts[0] << " "  << recvCounts[1] << " "  << recvCounts[2] << " "  << recvCounts[3] <<std::endl;
 
     int sub_myrank = -1;
     int sub_nprocs = -1;
