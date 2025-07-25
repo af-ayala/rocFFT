@@ -2369,7 +2369,8 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                                        uniform_counts,
                                                        std::move(subcomm));
 
-    alltoall_ptr->uniform_count_inside_subcomm = uniform_count_inside_subcomm;
+    alltoall_ptr->set_uniform_count_inside_subcomm(uniform_count_inside_subcomm);    
+
     auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
     multiPlan[alltoall_op]->group       = itemGroup;
     multiPlan[alltoall_op]->description = "all-to-all communication (subcomm)";

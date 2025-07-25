@@ -1464,6 +1464,11 @@ struct CommAllToAll : public MultiPlanItem
         const std::array<int, 3>& out_grid);
 #endif
 
+    void set_uniform_count_inside_subcomm(size_t val)
+    {
+        uniform_count_inside_subcomm = val;
+    }
+
 private:
     const rocfft_precision  precision;
     const rocfft_array_type arrayType;
