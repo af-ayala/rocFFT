@@ -2289,8 +2289,8 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
 
     std::cout <<  "+++ uniform_counts inside GlobalTransposeA2A" << std::endl;
     std::cout << "+++ uniform_counts: rank ["<<  local_comm_rank << "] " << uniform_counts << std::endl;
-    std::cout << "+++ send_counts: rank ["<<  local_comm_rank << "] : "  << send_counts[0] << " "  << send_counts[1] << " "  << send_counts[2] << std::endl;
-    std::cout << "+++ recv_counts: rank ["<<  local_comm_rank << "] : "  << recv_counts[0] << " "  << recv_counts[1] << " "  << recv_counts[2] << std::endl;
+    std::cout << "+++ send_counts: rank ["<<  local_comm_rank << "] : "  << send_counts[0] << " "  << send_counts[1] << " "  << send_counts[2] << " "  << send_counts[3] <<std::endl;
+    std::cout << "+++ recv_counts: rank ["<<  local_comm_rank << "] : "  << recv_counts[0] << " "  << recv_counts[1] << " "  << recv_counts[2] << " "  << recv_counts[3] <<  std::endl;
 
     std::cout << "inField bricks:" << std::endl;
     for(const auto& b : inField.bricks)
