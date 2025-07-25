@@ -1971,7 +1971,6 @@ static rocfft_field_t MakeFieldDimContiguous(const rocfft_field_t&      field,
     return out;
 }
 
-int  alan_counter = 1;
 void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     const rocfft_field_t&      inField,
                                     const rocfft_field_t&      outField,
@@ -1995,8 +1994,6 @@ void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
     if(rocfft_plan_description_t::multiple_devices_in_rank(inField)
        || rocfft_plan_description_t::multiple_devices_in_rank(outField))
     {
-        std::cout << "GlobalTransposeP2P called " << alan_counter << " times.\n";
-        alan_counter++; // Increment the global counter
         GlobalTransposeP2P(
             elem_size, inField, outField, input, output, inputAntecedents, outputItems, itemGroup);
     }
@@ -2622,8 +2619,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                                                        recv_counts,
                                                        BufferPtr::temp(send_buf.data()),
                                                        BufferPtr::temp(recv_buf.data()),
-                                                       uniform_counts,
-                                                       std::move(subcomm));
+                                                       uniform_counts);
 
     auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
     multiPlan[alltoall_op]->group       = itemGroup;
