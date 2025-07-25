@@ -2364,10 +2364,10 @@ bool uniform_in_subcomm = false;
                                                        uniform_counts,
                                                        std::move(subcomm));
 
-    if(subcomm && uniform_counts)
-    {
-        alltoall_ptr->uniform_count_inside_subcomm = send_count_inside_subcomm;
-    }                                                       
+    // if(subcomm && uniform_counts)
+    // {
+    //     alltoall_ptr->uniform_count_inside_subcomm = send_count_inside_subcomm;
+    // }                                                       
 
     auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
     multiPlan[alltoall_op]->group       = itemGroup;
