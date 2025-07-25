@@ -1475,7 +1475,8 @@ private:
     const std::vector<size_t> recvOffsets;
     const std::vector<size_t> recvCounts;
 
-    size_t sendUniformCount;
+    // counts for MPIAlltoall inside a subcommunicator
+    size_t uniform_count_inside_subcomm;
 
     // send/receive buffers
     const BufferPtr sendBuf;

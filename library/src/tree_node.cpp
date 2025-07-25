@@ -928,7 +928,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
 
-#ifdef ROCFFT_MPI_ENABLE
+// #ifdef ROCFFT_MPI_ENABLE
 
 MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
 
@@ -950,21 +950,20 @@ MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
     std::cout << "number of procs in the pencil sub communicator = " << sub_nprocs << std::endl;
 
     // each rank will send: local_comm_rank is actually from the global desc.mpi_comm: {0,1,2,3}
-    std::cout << "subrank send_count inside subcommunicator: [ " << sub_myrank << "] : "  << sendCounts[local_comm_rank] <<std::endl;
-    std::cout << "subrank recv_counts inside subcommunicator: [ " << sub_myrank << "] : "  << recvCounts[local_comm_rank] <<std::endl;
+    std::cout << "subrank send_count inside subcommunicator: [ " << sub_myrank << "] : "  << uniform_count_inside_subcomm <<std::endl;
 
     const auto elem_size = element_size(precision, arrayType);
 
     MPI_Request request;
 
-    if (subcomm)
+    if (subcomm && uniform_count_inside_subcomm > 0)
     {
         std::cout << "Using subcommunicator-based MPI_Ialltoall\n";
 
         if(LOG_PLAN_ENABLED())
             log_plan("Using subcommunicator-based MPI_Ialltoall\n");
 
-        const int send_count_bytes = static_cast<int>(sendCounts[local_comm_rank] * elem_size);
+        const int send_count_bytes = static_cast<int>(uniform_count_inside_subcomm * elem_size);
 
         const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
