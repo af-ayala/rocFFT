@@ -2711,9 +2711,9 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
             // std::vector<int> subcomm_vec(pencil_neighbors.begin(), pencil_neighbors.end());
             // std::set<int> subcomm_ranks = pencil_neighbors;
 
-            DOUT << "[Rank " << my_global_rank << "] Subcomm ranks for pencil: ";
-            for(auto r : subcomm_ranks) DOUT << r << " ";
-            DOUT << std::endl;
+            // DOUT << "[Rank " << my_global_rank << "] Subcomm ranks for pencil: ";
+            // for(auto r : subcomm_ranks) DOUT << r << " ";
+            // DOUT << std::endl;
 
             // 3. Create subcommunicator using MPI_Group (RAII)
             MPI_Group world_group;
