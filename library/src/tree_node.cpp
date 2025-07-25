@@ -932,22 +932,22 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
 MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
 
-    int my_global_rank = -1;
+    int myrank = -1;
     int nprocs = -1;
-    MPI_Comm_rank(desc.mpi_comm, &my_global_rank);
-    MPI_Comm_size(desc.mpi_comm, &nprocs);
+    MPI_Comm_rank(plan->desc.mpi_comm, &myrank);
+    MPI_Comm_size(plan->desc.mpi_comm, &nprocs);
 
     const auto local_comm_rank = get_local_comm_rank();
     const auto local_comm_size = get_local_comm_size();
 
-std::cout <<  "uniform_counts inside ExecuteAsync rank " << my_global_rank << " rank get " <<  local_comm_rank << std::endl;
+std::cout <<  "uniform_counts inside ExecuteAsync rank " << myrank << " rank get " <<  local_comm_rank << std::endl;
 
 std::cout <<  "uniform_counts inside ExecuteAsync nrpocs " << nprocs << " get_local_comm_size get " <<  local_comm_size << std::endl;
 
-std::cout << "@*# uniform_counts: " << uniform_counts << std::endl;
-std::cout << "@*#sendCounts: ";
+std::cout << "my rank : " myrank <<  "@*# uniform_counts: " << uniform_counts << std::endl;
+std::cout << "my rank :" << "@*#sendCounts: ";
 for(auto x : sendCounts) std::cout << x << " ";
-std::cout << "\n @*#recvCounts: ";
+std::cout << "my rank :" << "\n @*#recvCounts: ";
 for(auto x : recvCounts) std::cout << x << " ";
 std::cout << std::endl;
 
