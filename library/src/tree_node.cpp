@@ -937,21 +937,21 @@ MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
     MPI_Comm_rank(plan->desc.mpi_comm, &myrank);
     MPI_Comm_size(plan->desc.mpi_comm, &nprocs);
 
-std::cout <<  "inside ExecuteAsync nrpocs " << nprocs << std::endl;
-std::cout << "rank : [" << myrank <<  "] uniform_counts: " << uniform_counts << "local rank : [" << local_comm_rank << std::endl;
-std::cout << "rank : [ " << myrank << "] : "  << sendCounts[0] << " "  << sendCounts[1] << " "  << sendCounts[2] << " "  << sendCounts[3] <<std::endl;
-std::cout << "rank : [ " << myrank << "] : "  << recvCounts[0] << " "  << recvCounts[1] << " "  << recvCounts[2] << " "  << recvCounts[3] <<std::endl;
+    std::cout <<  "inside ExecuteAsync nrpocs " << nprocs << std::endl;
+    std::cout << "rank : [" << myrank <<  "] uniform_counts: " << uniform_counts << "local rank : [" << local_comm_rank <<  "]" << std::endl;
+    std::cout << "global sendCounts rank : [ " << myrank << "] : "  << sendCounts[0] << " "  << sendCounts[1] << " "  << sendCounts[2] << " "  << sendCounts[3] <<std::endl;
+    std::cout << "global recvCounts rank : [ " << myrank << "] : "  << recvCounts[0] << " "  << recvCounts[1] << " "  << recvCounts[2] << " "  << recvCounts[3] <<std::endl;
 
     int sub_myrank = -1;
     int sub_nprocs = -1;
     MPI_Comm_rank(subcomm, &sub_myrank);
     MPI_Comm_size(subcomm, &sub_nprocs);
 
-std::cout << "subrank : [" << sub_myrank <<  "] uniform_counts: " << uniform_counts << " sub_nprocs: " << sub_nprocs << std::endl;
+    std::cout << "number of procs in the pencil sub communicator = " << sub_nprocs << std::endl;
 
-// add subb_sendcount ..
-// std::cout << "subrank : [ " << sub_myrank << "] : "  << send_counts[0] << " "  << send_counts[1] << " "  << send_counts[2] << " "  << send_counts[3] <<std::endl;
-// std::cout << "subrank : [ " << sub_myrank << "] : "  << recv_counts[0] << " "  << recv_counts[1] << " "  << recv_counts[2] << " "  << recv_counts[3] <<std::endl;
+    // each rank will send: local_comm_rank is actually from the global desc.mpi_comm: {0,1,2,3}
+    std::cout << "subrank send_count inside subcommunicator: [ " << sub_myrank << "] : "  << send_counts[local_comm_rank] <<std::endl;
+    std::cout << "subrank recv_counts inside subcommunicator: [ " << sub_myrank << "] : "  << recv_counts[local_comm_rank] <<std::endl;
 
     const auto elem_size = element_size(precision, arrayType);
 
