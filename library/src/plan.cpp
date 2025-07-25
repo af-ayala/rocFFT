@@ -2734,8 +2734,8 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                 (in_pencil_comm ? std::move(pencil_comm) : MPI_Comm_wrapper_t{})
             );
 
-            std::cout << " size of currentBufs " << currentBufs.size << std::endl;
-            std::cout << " size of tempBufs " << tempBufs.size << std::endl;
+            std::cout << " size of currentBufs " << currentBufs.size() << std::endl;
+            std::cout << " size of tempBufs " << tempBufs.size() << std::endl;
 
             currentField = nextField;
             currentBufs = tempBufs;
