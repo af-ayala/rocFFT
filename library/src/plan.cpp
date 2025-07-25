@@ -2631,11 +2631,10 @@ if(can_pencil_alltoall)
 
     for(size_t step = 0; step < pencilize_axes.size(); ++step)
     {
+        int pencil_axis = pencilize_axes[step];
 
         std::cout << "[Rank " << my_global_rank << "] Step " << step
              << ", Pencil axis: " << pencil_axis << std::endl;
-
-        int pencil_axis = pencilize_axes[step];
 
         // create the next field by splitting using a heuristic approach
         rocfft_field_t nextField = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, pencil_axis, nprocs);
