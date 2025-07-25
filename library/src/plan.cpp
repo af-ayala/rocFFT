@@ -2460,7 +2460,7 @@ rocfft_field_t MakeFieldWithPencilSplit(
         // Contiguous strides
         auto brickLength = brick.length();
         int dist = 1;
-        for(int s = 0; s < brick.stride.size(); ++s)
+        for(size_t s = 0; s < brick.stride.size(); ++s)
         {
             brick.stride[s] = dist;
             dist *= brickLength[s];
