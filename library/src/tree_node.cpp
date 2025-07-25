@@ -904,93 +904,6 @@ void CommGather::Print(rocfft_ostream& os, const int indent) const
     }
 }
 
-#ifdef ROCFFT_MPI_ENABLE
-std::array<int, 3> CommAllToAll::rank_to_coords(int rank, const std::array<int, 3>& grid)
-{
-    int py = grid[1], pz = grid[2];
-    int z = rank % pz;
-    int y = (rank / pz) % py;
-    int x = rank / (pz * py);
-    return {x, y, z};
-}
-
-int CommAllToAll::calculate_color_for_subcomm(int                       rank,
-                                              const std::array<int, 3>& grid,
-                                              int                       split_dim)
-{
-    const auto [x, y, z] = rank_to_coords(rank, grid);
-
-    switch(split_dim)
-    {
-    case 0: // Transposing along X → group by YZ
-        return y * grid[2] + z;
-    case 1: // Transposing along Y → group by XZ
-        return x * grid[2] + z;
-    case 2: // Transposing along Z → group by XY
-        return x * grid[1] + y;
-    default:
-        throw std::runtime_error("Invalid split_dim");
-    }
-}
-
-int CommAllToAll::calculate_subcomm_size(const std::array<int, 3>& grid, int split_dim)
-{
-    return grid[split_dim];
-}
-
-bool CommAllToAll::can_form_subcommunicators(MPI_Comm global_comm,
-                                             const std::vector<size_t>& send_counts,
-                                             const std::vector<size_t>& recv_counts,
-                                             const std::array<int, 3>& in_grid,
-                                             const std::array<int, 3>& out_grid)
-{
-
-    std::cout << ">>> called within can_form_subcommunicators" << std::endl;
-    std::cout << ">>>send_counts: ";
-    for(auto x : send_counts) std::cout << x << " ";
-    std::cout << "\n >>>recv_counts: ";
-    for(auto x : recv_counts) std::cout << x << " ";
-    std::cout << std::endl;
-
-    // check if uniform counts
-    if(!std::all_of(send_counts.begin(), send_counts.end(), [&](size_t c){ return c == send_counts[0]; }))
-        return false;
-    if(!std::all_of(recv_counts.begin(), recv_counts.end(), [&](size_t c){ return c == recv_counts[0]; }))
-        return false;
-
-    // check communicator size matches grid product
-    int comm_size = 0;
-    MPI_Comm_size(global_comm, &comm_size);
-    int in_grid_size  = in_grid[0] * in_grid[1] * in_grid[2];
-    int out_grid_size = out_grid[0] * out_grid[1] * out_grid[2];
-    if(comm_size != in_grid_size || comm_size != out_grid_size)
-        return false;
-
-    // detect a single split dimension (the one that changes)
-    int split_dim = -1;
-    int changes = 0;
-    for(int i = 0; i < 3; ++i)
-    {
-        if(in_grid[i] != out_grid[i])
-        {
-            split_dim = i;
-            ++changes;
-        }
-    }
-
-    std::cout << ">>> changes = " << changes << std::endl;
-    if(changes != 1)  // only support single-dimension (pencil) redistribution
-        return false;
-
-    // subcomm size is the value in in_grid[split_dim]
-    int subcomm_size = in_grid[split_dim];
-    if(comm_size % subcomm_size != 0)
-        return false;
-
-    return true;
-}
-#endif
-
 int alan_kia = 1;
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
@@ -1019,11 +932,22 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
 MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
 
-std::cout <<  "uniform_counts inside ExecuteAsync" << std::endl;
-std::cout << "uniform_counts: " << uniform_counts << std::endl;
-std::cout << "sendCounts: ";
+    int my_global_rank = -1;
+    int nprocs = -1;
+    MPI_Comm_rank(desc.mpi_comm, &my_global_rank);
+    MPI_Comm_size(desc.mpi_comm, &nprocs);
+
+    const auto local_comm_rank = get_local_comm_rank();
+    const auto local_comm_size = get_local_comm_size();
+
+std::cout <<  "uniform_counts inside ExecuteAsync rank " << my_global_rank << " rank get " <<  local_comm_rank << std::endl;
+
+std::cout <<  "uniform_counts inside ExecuteAsync nrpocs " << nprocs << " get_local_comm_size get " <<  local_comm_size << std::endl;
+
+std::cout << "@*# uniform_counts: " << uniform_counts << std::endl;
+std::cout << "@*#sendCounts: ";
 for(auto x : sendCounts) std::cout << x << " ";
-std::cout << "\n recvCounts: ";
+std::cout << "\n @*#recvCounts: ";
 for(auto x : recvCounts) std::cout << x << " ";
 std::cout << std::endl;
 
