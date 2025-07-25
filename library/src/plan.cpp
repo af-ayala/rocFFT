@@ -2288,10 +2288,10 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                              });
 
     std::cout <<  "+++ uniform_counts inside GlobalTransposeA2A" << std::endl;
-    std::cout << "+++ uniform_counts: " << uniform_counts << std::endl;
-    std::cout << "+++ send_counts: ";
+    std::cout << "+++ uniform_counts: rank ["<<  local_comm_rank << "]" << uniform_counts << std::endl;
+    std::cout << "+++ send_counts: rank ["<<  local_comm_rank << "]" ;
     for(auto x : send_counts) std::cout << x << " ";
-    std::cout << "\n +++recv_counts: ";
+    std::cout << "\n +++recv_counts: rank [" <<  local_comm_rank << "]";
     for(auto x : recv_counts) std::cout << x << " ";
     std::cout << std::endl;
 
