@@ -107,11 +107,9 @@ struct rocfft_brick_t
 
     bool operator==(const rocfft_brick_t& other) const
     {
-        return lower == other.lower &&
-               upper == other.upper &&
-               stride == other.stride &&
-               location.comm_rank == other.location.comm_rank &&
-               location.device == other.location.device;
+        return lower == other.lower && upper == other.upper && stride == other.stride
+               && location.comm_rank == other.location.comm_rank
+               && location.device == other.location.device;
     }
 
     std::string str() const;
@@ -122,9 +120,12 @@ inline std::array<int, 3> infer_grid_from_bricks(const std::vector<rocfft_brick_
     std::set<size_t> xset, yset, zset;
     for(const auto& b : bricks)
     {
-        if(b.lower.size() >= 1) xset.insert(b.lower[0]);
-        if(b.lower.size() >= 2) yset.insert(b.lower[1]);
-        if(b.lower.size() >= 3) zset.insert(b.lower[2]);
+        if(b.lower.size() >= 1)
+            xset.insert(b.lower[0]);
+        if(b.lower.size() >= 2)
+            yset.insert(b.lower[1]);
+        if(b.lower.size() >= 3)
+            zset.insert(b.lower[2]);
     }
     int nx = std::max(1, static_cast<int>(xset.size()));
     int ny = std::max(1, static_cast<int>(yset.size()));
@@ -199,7 +200,6 @@ struct rocfft_plan_description_t
     // returns true if a field has bricks such that any rank has
     // bricks on more than one device
     static bool multiple_devices_in_rank(const rocfft_field_t& field);
-
 };
 
 struct rocfft_plan_t
@@ -357,9 +357,9 @@ private:
                          const std::vector<size_t>& inputAntecedents,
                          std::vector<size_t>&       outputItems,
                          size_t                     transposeNumber,
-                        MPI_Comm_wrapper_t&&       subcomm = MPI_Comm_wrapper_t{});
+                         MPI_Comm_wrapper_t&&       subcomm = MPI_Comm_wrapper_t{});
 
-    // global transpose implemented as an all-to-all communication.
+    // default global all-to-all transpose
     void GlobalTransposeA2A(size_t                     elem_size,
                             const rocfft_field_t&      inField,
                             const rocfft_field_t&      outField,
@@ -367,8 +367,18 @@ private:
                             std::vector<BufferPtr>&    output,
                             const std::vector<size_t>& inputAntecedents,
                             std::vector<size_t>&       outputItems,
-                            const std::string&         itemGroup,
-                        MPI_Comm_wrapper_t&&       subcomm = MPI_Comm_wrapper_t{});
+                            const std::string&         itemGroup);
+
+    // global transpose implemented as an all-to-all communication with sub-communicator optimization.
+    void GlobalTransposeA2ASubcomm(size_t                     elem_size,
+                                   const rocfft_field_t&      inField,
+                                   const rocfft_field_t&      outField,
+                                   std::vector<BufferPtr>&    input,
+                                   std::vector<BufferPtr>&    output,
+                                   const std::vector<size_t>& inputAntecedents,
+                                   std::vector<size_t>&       outputItems,
+                                   const std::string&         itemGroup,
+                                   MPI_Comm_wrapper_t&&       subcomm = MPI_Comm_wrapper_t{});                            
 
     // fallback case for global transpose that uses point-to-point
     // communications, for when all-to-all isn't possible.

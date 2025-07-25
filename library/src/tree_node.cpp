@@ -904,7 +904,7 @@ void CommGather::Print(rocfft_ostream& os, const int indent) const
     }
 }
 
-int alan_kia = 1;
+int  alan_kia = 1;
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
                                 void*                 out_buffer[],
@@ -915,163 +915,112 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     std::cout << "ExecuteAsync called " << alan_kia << " times.\n";
     alan_kia++; // Increment the global counter
 
-    // check that we have as many elems in our count/offset buffers as
-    // we have ranks
-    const size_t num_ranks = plan->get_local_comm_size();
-    if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
-       || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
-        throw std::runtime_error(
-            "CommAllToAll: number of counts/offsets does not match number of ranks");
+    // Choose communicator and comm size for THIS op
+    MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
 
-    if(LOG_PLAN_ENABLED())
-    {
-        log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
-    }
+    int global_rank = -1, global_size = -1;
+    MPI_Comm_rank(plan->desc.mpi_comm, &global_rank);
+    MPI_Comm_size(plan->desc.mpi_comm, &global_size);
 
-#ifdef ROCFFT_MPI_ENABLE
-
-MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
-
-    int myrank = -1;
-    int nprocs = -1;
-    MPI_Comm_rank(plan->desc.mpi_comm, &myrank);
-    MPI_Comm_size(plan->desc.mpi_comm, &nprocs);
-
-    std::cout <<  "inside ExecuteAsync nrpocs " << nprocs << std::endl;
-    std::cout << "rank : [" << myrank <<  "] uniform_counts: " << uniform_counts << "local rank : [" << local_comm_rank <<  "]" << std::endl;
-    std::cout << "global sendCounts rank : [ " << myrank << "] : "  << sendCounts[0] << " "  << sendCounts[1] << " "  << sendCounts[2] << " "  << sendCounts[3] <<std::endl;
-    std::cout << "global recvCounts rank : [ " << myrank << "] : "  << recvCounts[0] << " "  << recvCounts[1] << " "  << recvCounts[2] << " "  << recvCounts[3] <<std::endl;
-
-    int sub_myrank = -1;
-    int sub_nprocs = -1;
-    MPI_Comm_rank(subcomm, &sub_myrank);
-    MPI_Comm_size(subcomm, &sub_nprocs);
-
-    std::cout << "number of procs in the pencil sub communicator = " << sub_nprocs << std::endl;
-
-    // each rank will send: local_comm_rank is actually from the global desc.mpi_comm: {0,1,2,3}
-    std::cout << "subrank send_count inside subcommunicator: [ " << sub_myrank << "] : "  << uniform_count_inside_subcomm <<std::endl;
+    int comm_rank = -1, comm_size = -1;
+    MPI_Comm_rank(transpose_comm, &comm_rank);
+    MPI_Comm_size(transpose_comm, &comm_size);
 
     const auto elem_size = element_size(precision, arrayType);
-
     MPI_Request request;
 
-    if (subcomm && uniform_count_inside_subcomm > 0)
+    if(subcomm)
     {
-        std::cout << "Using subcommunicator-based MPI_Ialltoall\n";
+        // **Pencil subcomm case** (use only if uniform counts in subcomm)
+        std::cout << "[Rank " << global_rank << "] Subcomm ExecuteAsync: subcomm_size="
+                  << comm_size << " comm_rank=" << comm_rank
+                  << " uniform=" << uniform_counts << " uniform_count_inside_subcomm="
+                  << uniform_count_inside_subcomm << std::endl;
 
-        if(LOG_PLAN_ENABLED())
-            log_plan("Using subcommunicator-based MPI_Ialltoall\n");
+        if(!uniform_counts)
+            throw std::runtime_error("CommAllToAll::ExecuteAsync: non-uniform counts in pencil subcomm!");
 
+        // In subcomm: sendCounts, recvCounts, etc are sized for comm_size, indexed by comm_rank
         const int send_count_bytes = static_cast<int>(uniform_count_inside_subcomm * elem_size);
 
-        const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
-                                          send_count_bytes,
-                                          MPI_CHAR,
-                                          recvBuf.get(in_buffer, out_buffer, local_comm_rank),
-                                          send_count_bytes,
-                                          MPI_CHAR,
-                                          transpose_comm,
-                                          &request);
+        int ret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, comm_rank),
+                                send_count_bytes, MPI_CHAR,
+                                recvBuf.get(in_buffer, out_buffer, comm_rank),
+                                send_count_bytes, MPI_CHAR,
+                                transpose_comm, &request);
 
-        if(mpiret != MPI_SUCCESS)
+        if(ret != MPI_SUCCESS)
         {
             char errmsg[MPI_MAX_ERROR_STRING];
-            int  errlen = 0;
-            MPI_Error_string(mpiret, errmsg, &errlen);
-
-            comm_status   = COMM_MPI_ERROR;
-            error_message = "MPI_Ialltoall (subcomm) failed on rank "
-                            + std::to_string(local_comm_rank) + ": " + std::string(errmsg);
+            int errlen = 0;
+            MPI_Error_string(ret, errmsg, &errlen);
+            comm_status = COMM_MPI_ERROR;
+            error_message = "MPI_Ialltoall (subcomm) failed on global rank " +
+                            std::to_string(global_rank) + ": " + std::string(errmsg);
             return;
         }
     }
     else if(uniform_counts)
     {
-        std::cout << "Using optimized MPI_Ialltoall\n";
-
-        if(LOG_PLAN_ENABLED())
-            log_plan("Using MPI_Ialltoall\n");
-
+        // **Global uniform (slab) case**
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
-        const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
-                                          send_count_bytes,
-                                          MPI_CHAR,
-                                          recvBuf.get(in_buffer, out_buffer, local_comm_rank),
-                                          send_count_bytes,
-                                          MPI_CHAR,
-                                          transpose_comm,
-                                          &request);
+        int ret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, global_rank),
+                                send_count_bytes, MPI_CHAR,
+                                recvBuf.get(in_buffer, out_buffer, global_rank),
+                                send_count_bytes, MPI_CHAR,
+                                transpose_comm, &request);
 
-        if(mpiret != MPI_SUCCESS)
+        if(ret != MPI_SUCCESS)
         {
             char errmsg[MPI_MAX_ERROR_STRING];
-            int  errlen = 0;
-            MPI_Error_string(mpiret, errmsg, &errlen);
-
-            comm_status   = COMM_MPI_ERROR;
-            error_message = "MPI_Ialltoall failed on rank " + std::to_string(local_comm_rank) + ": "
-                            + std::string(errmsg);
-
+            int errlen = 0;
+            MPI_Error_string(ret, errmsg, &errlen);
+            comm_status = COMM_MPI_ERROR;
+            error_message = "MPI_Ialltoall failed on rank " +
+                            std::to_string(global_rank) + ": " + std::string(errmsg);
             return;
         }
     }
     else
     {
-        std::cout << "Using default MPI_Ialltoallv\n";
-
-        if(LOG_PLAN_ENABLED())
-            log_plan("Using MPI_Ialltoallv\n");
-
-        const int local_comm_rank = plan->get_local_comm_rank();
-
-        // MPI takes ints for everything, convert our size_t elements to int bytes
-        auto convertToInt = [](const std::vector<size_t>& src, std::vector<int>& dest) {
-            dest.reserve(src.size());
-            std::copy(src.begin(), src.end(), std::back_inserter(dest));
+        // **Global non-uniform case (slab, general)**
+        std::vector<int> intSendOffsets, intSendCounts, intRecvOffsets, intRecvCounts;
+        auto convertToInt = [](const std::vector<size_t>& src, std::vector<int>& dest)
+        {
+            dest.resize(src.size());
+            std::transform(src.begin(), src.end(), dest.begin(),
+                           [](size_t x) { return static_cast<int>(x); });
         };
 
-        std::vector<int> intSendOffsets;
-        std::vector<int> intSendCounts;
-        std::vector<int> intRecvOffsets;
-        std::vector<int> intRecvCounts;
         convertToInt(sendOffsets, intSendOffsets);
         convertToInt(sendCounts, intSendCounts);
         convertToInt(recvOffsets, intRecvOffsets);
         convertToInt(recvCounts, intRecvCounts);
 
-        const auto mpiret = MPI_Ialltoallv(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
-                                           intSendCounts.data(),
-                                           intSendOffsets.data(),
-                                           rocfft_type_to_mpi_type(precision, arrayType),
-                                           recvBuf.get(in_buffer, out_buffer, local_comm_rank),
-                                           intRecvCounts.data(),
-                                           intRecvOffsets.data(),
-                                           rocfft_type_to_mpi_type(precision, arrayType),
-                                           transpose_comm,
-                                           &request);
+        int ret = MPI_Ialltoallv(sendBuf.get(in_buffer, out_buffer, global_rank),
+                                 intSendCounts.data(), intSendOffsets.data(),
+                                 rocfft_type_to_mpi_type(precision, arrayType),
+                                 recvBuf.get(in_buffer, out_buffer, global_rank),
+                                 intRecvCounts.data(), intRecvOffsets.data(),
+                                 rocfft_type_to_mpi_type(precision, arrayType),
+                                 transpose_comm, &request);
 
-        if(mpiret != MPI_SUCCESS)
+        if(ret != MPI_SUCCESS)
         {
             char errmsg[MPI_MAX_ERROR_STRING];
-            int  errlen = 0;
-            MPI_Error_string(mpiret, errmsg, &errlen);
-
-            comm_status   = COMM_MPI_ERROR;
-            error_message = "MPI_Ialltoallv failed on rank " + std::to_string(local_comm_rank)
-                            + ": " + std::string(errmsg);
-
+            int errlen = 0;
+            MPI_Error_string(ret, errmsg, &errlen);
+            comm_status = COMM_MPI_ERROR;
+            error_message = "MPI_Ialltoallv failed on rank " +
+                            std::to_string(global_rank) + ": " + std::string(errmsg);
             return;
         }
     }
 
     comm_requests.push_back(request);
-
-#else
-    throw std::runtime_error("CommAllToAll not implemented");
-#endif
 }
+
 
 void CommAllToAll::Wait()
 {
