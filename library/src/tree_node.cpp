@@ -950,8 +950,8 @@ MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
     std::cout << "number of procs in the pencil sub communicator = " << sub_nprocs << std::endl;
 
     // each rank will send: local_comm_rank is actually from the global desc.mpi_comm: {0,1,2,3}
-    std::cout << "subrank send_count inside subcommunicator: [ " << sub_myrank << "] : "  << send_counts[local_comm_rank] <<std::endl;
-    std::cout << "subrank recv_counts inside subcommunicator: [ " << sub_myrank << "] : "  << recv_counts[local_comm_rank] <<std::endl;
+    std::cout << "subrank send_count inside subcommunicator: [ " << sub_myrank << "] : "  << sendCounts[local_comm_rank] <<std::endl;
+    std::cout << "subrank recv_counts inside subcommunicator: [ " << sub_myrank << "] : "  << recvCounts[local_comm_rank] <<std::endl;
 
     const auto elem_size = element_size(precision, arrayType);
 
