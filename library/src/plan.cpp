@@ -2402,7 +2402,7 @@ rocfft_field_t MakeFieldWithPencilSplit(
     const std::vector<size_t>& lengthsWithBatch,
     int axis_entire, int nprocs)
 {
-    size_t ndim = lengthsWithBatch.size();
+    int ndim = lengthsWithBatch.size();
 
     // Find axes to split (not axis_entire)
     std::vector<int> split_axes;
