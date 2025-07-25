@@ -941,7 +941,7 @@ std::cout <<  "uniform_counts inside ExecuteAsync rank " << myrank << std::endl;
 
 std::cout <<  "uniform_counts inside ExecuteAsync nrpocs " << nprocs << std::endl;
 
-std::cout << "my rank : " myrank <<  "@*# uniform_counts: " << uniform_counts << std::endl;
+std::cout << "my rank : " << myrank <<  "@*# uniform_counts: " << uniform_counts << std::endl;
 std::cout << "my rank :" << "@*#sendCounts: ";
 for(auto x : sendCounts) std::cout << x << " ";
 std::cout << "my rank :" << "\n @*#recvCounts: ";
