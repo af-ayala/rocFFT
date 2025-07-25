@@ -2400,10 +2400,9 @@ rocfft_field_t MakeFieldWithSlabSplit(const rocfft_field_t& base, const std::vec
 rocfft_field_t MakeFieldWithPencilSplit(
     const rocfft_field_t& currentField,
     const std::vector<size_t>& lengthsWithBatch,
-    int axis_entire)
+    int axis_entire, int nprocs)
 {
     size_t ndim = lengthsWithBatch.size();
-    size_t nprocs = currentField.bricks.size();
 
     // Find axes to split (not axis_entire)
     std::vector<int> split_axes;
@@ -2412,7 +2411,7 @@ rocfft_field_t MakeFieldWithPencilSplit(
             split_axes.push_back(d);
 
     // Factor nprocs as balanced as possible: P x Q = nprocs
-    size_t P = 1, Q = nprocs;
+    int P = 1, Q = nprocs;
     for(size_t f = 1; f <= nprocs; ++f)
     {
         if(nprocs % f == 0)
@@ -2432,7 +2431,7 @@ rocfft_field_t MakeFieldWithPencilSplit(
     out.bricks.resize( nprocs );
 
     // Distribute location/device assignments round-robin
-    for(size_t i = 0; i < nrpocs; ++i)
+    for(size_t i = 0; i < nprocs; ++i)
     {
         auto& brick = out.bricks[i];
 
@@ -2599,7 +2598,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
     int my_global_rank = -1;
     int nprocs = -1;
     MPI_Comm_rank(desc.mpi_comm, &my_global_rank);
-    MPI_Comm_Size(desc.mpi_comm, &nprocs);
+    MPI_Comm_size(desc.mpi_comm, &nprocs);
 
 #if USE_FILE_LOG
     std::ofstream dbg("debug_rank" + std::to_string(my_global_rank) + ".log");
@@ -2619,7 +2618,7 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
         fft_done[d] = 1;
 
     DOUT << "[Rank " << my_global_rank << "] My fft_done : ";
-    for(auto r : fft_done ) DOUT << r << " ";
+    for(auto r : fft_done ) DOUT << r << " " << "communicator size = " << nprocs << std::endl;
     
     std::vector<int> pencilize_axes;
     for(int axis = 0; axis < 3; ++axis)
