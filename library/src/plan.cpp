@@ -2412,11 +2412,11 @@ rocfft_field_t MakeFieldWithPencilSplit(
 
     // Factor nprocs as balanced as possible: P x Q = nprocs
     int P = 1, Q = nprocs;
-    for(size_t f = 1; f <= nprocs; ++f)
+    for(int f = 1; f <= nprocs; ++f)
     {
         if(nprocs % f == 0)
         {
-            size_t q = nprocs / f;
+            int q = nprocs / f;
             if(std::abs((int)f - (int)q) < std::abs((int)P - (int)Q))
             {
                 P = f; Q = q;
