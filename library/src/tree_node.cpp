@@ -964,7 +964,7 @@ std::cout << "subrank : [" << sub_myrank <<  "] uniform_counts: " << uniform_cou
         if(LOG_PLAN_ENABLED())
             log_plan("Using subcommunicator-based MPI_Ialltoall\n");
 
-        const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
+        const int send_count_bytes = static_cast<int>(sendCounts[local_comm_rank] * elem_size);
 
         const auto mpiret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
                                           send_count_bytes,
