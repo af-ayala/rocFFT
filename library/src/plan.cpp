@@ -2705,9 +2705,11 @@ if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && !use_intermediate_slabs)
                            all_neighbors.data(), recvcounts.data(), displs.data(),
                            MPI_INT, desc.mpi_comm);
 
-            std::set<int> subcomm_ranks;
-            for(auto r : all_neighbors)
-                if(r >= 0) subcomm_ranks.insert(r);
+            // std::set<int> subcomm_ranks;
+            // for(auto r : all_neighbors)
+            //     if(r >= 0) subcomm_ranks.insert(r);
+            std::set<int> subcomm_ranks = pencil_neighbors;
+
 
             DOUT << "[Rank " << my_global_rank << "] Subcomm ranks for pencil: ";
             for(auto r : subcomm_ranks) DOUT << r << " ";
