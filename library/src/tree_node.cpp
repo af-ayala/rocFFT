@@ -937,16 +937,23 @@ MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
     MPI_Comm_rank(plan->desc.mpi_comm, &myrank);
     MPI_Comm_size(plan->desc.mpi_comm, &nprocs);
 
-std::cout <<  "uniform_counts inside ExecuteAsync rank " << myrank << std::endl;
+std::cout <<  "inside ExecuteAsync nrpocs " << nprocs << std::endl;
+std::cout << "rank : [" << myrank <<  "] uniform_counts: " << uniform_counts << std::endl;
+std::cout << "rank : [ " << myrank << "] : "  << send_counts[0] << " "  << send_counts[1] << " "  << send_counts[2] << " "  << send_counts[3] <<std::endl;
+std::cout << "rank : [ " << myrank << "] : "  << recv_counts[0] << " "  << recv_counts[1] << " "  << recv_counts[2] << " "  << recv_counts[3] <<std::endl;
 
-std::cout <<  "uniform_counts inside ExecuteAsync nrpocs " << nprocs << std::endl;
 
-std::cout << "my rank : " << myrank <<  "@*# uniform_counts: " << uniform_counts << std::endl;
-std::cout << "my rank :" << "@*#sendCounts: ";
-for(auto x : sendCounts) std::cout << x << " ";
-std::cout << "my rank :" << "\n @*#recvCounts: ";
-for(auto x : recvCounts) std::cout << x << " ";
-std::cout << std::endl;
+    int sub_myrank = -1;
+    int sub_nprocs = -1;
+    MPI_Comm_rank(subcomm, &sub_myrank);
+    MPI_Comm_size(subcomm, &sub_nprocs);
+
+std::cout << "subrank : [" << sub_myrank <<  "] uniform_counts: " << uniform_counts << " sub_nprocs: " << sub_nprocs << std::endl;
+
+// std::cout << "subrank : [ " << sub_myrank << "] : "  << send_counts[0] << " "  << send_counts[1] << " "  << send_counts[2] << " "  << send_counts[3] <<std::endl;
+// std::cout << "subrank : [ " << sub_myrank << "] : "  << recv_counts[0] << " "  << recv_counts[1] << " "  << recv_counts[2] << " "  << recv_counts[3] <<std::endl;
+
+
 
     const auto elem_size = element_size(precision, arrayType);
 
