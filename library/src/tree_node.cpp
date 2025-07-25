@@ -949,7 +949,7 @@ std::cout << "rank : [ " << myrank << "] : "  << recvCounts[0] << " "  << recvCo
 
 std::cout << "subrank : [" << sub_myrank <<  "] uniform_counts: " << uniform_counts << " sub_nprocs: " << sub_nprocs << std::endl;
 
-# add subb_sendcount ..
+// add subb_sendcount ..
 // std::cout << "subrank : [ " << sub_myrank << "] : "  << send_counts[0] << " "  << send_counts[1] << " "  << send_counts[2] << " "  << send_counts[3] <<std::endl;
 // std::cout << "subrank : [ " << sub_myrank << "] : "  << recv_counts[0] << " "  << recv_counts[1] << " "  << recv_counts[2] << " "  << recv_counts[3] <<std::endl;
 
