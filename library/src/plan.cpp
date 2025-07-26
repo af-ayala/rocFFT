@@ -2974,12 +2974,14 @@ void print_plan(const std::vector<TransposeStep>& plan)
 {
     for(size_t i=0; i<plan.size(); ++i)
     {
-        std::cout << "@@@@Step " << i << ": ";
-        for(int x : plan[i].grid) std::cout << x << " ";
-        std::cout << " -- ";
-        if(plan[i].type == TransposeType::Default) std::cout << "Default";
+        std::cout << "@@@@Step " << i << "from grid : ";
+        for(int x : plan[i].from_grid) std::cout << x << " ";
+        std::cout << " to grid : "; 
+        for(int x : plan[i].from_grid) std::cout << x << " ";
+        std::cout << ", type: "; 
+        if(plan[i].type == TransposeType::Slab) std::cout << "Slab";
         else std::cout << "Pencil";
-        std::cout << " -- " << plan[i].description << std::endl;
+        std::cout <<  std::endl;
     }
 }
 
