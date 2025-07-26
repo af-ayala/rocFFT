@@ -2767,6 +2767,12 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
 }
 
 
+// Utility: check if two arrays are equal
+template<typename T, size_t N>
+bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b) {
+    return std::equal(a.begin(), a.end(), b.begin());
+}
+
 // Generate all unique permutations of {P, Q, 1}
 std::vector<std::array<int,3>> generate_unique_pencil_grids(int P, int Q)
 {
