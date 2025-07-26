@@ -2767,56 +2767,26 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
 }
 
 
-// Utility: check if two arrays are equal
+
+// Utility to compare arrays
 template<typename T, size_t N>
 bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b) {
-    return std::equal(a.begin(), a.end(), b.begin());
+    for(size_t i = 0; i < N; ++i) if(a[i] != b[i]) return false;
+    return true;
 }
 
-// Generate all unique permutations of {P, Q, 1}
-std::vector<std::array<int,3>> generate_unique_pencil_grids(int P, int Q)
-{
-    std::set<std::array<int,3>> unique;
-    std::array<int,3> base{P, Q, 1};
-    std::sort(base.begin(), base.end()); // for std::next_permutation
-    do {
-        unique.insert(base);
-    } while(std::next_permutation(base.begin(), base.end()));
-    return std::vector<std::array<int,3>>(unique.begin(), unique.end());
-}
-
-// Find P, Q for the product such that P*Q=prod, P>=Q, and as balanced as possible
-std::pair<int,int> find_balanced_factors(int prod)
-{
-    int bestP = prod, bestQ = 1;
-    int minDiff = prod - 1;
-    for(int q = 1; q <= std::sqrt(prod); ++q)
-    {
-        if(prod % q == 0)
-        {
-            int p = prod / q;
-            if(p - q < minDiff)
-            {
-                bestP = p; bestQ = q; minDiff = p - q;
+// Find balanced factors for n = a*b, return pair (a, b) with a >= b
+std::pair<int,int> find_balanced_factors(int n) {
+    int best_a = n, best_b = 1, min_diff = n-1;
+    for(int b = 1; b <= n; ++b) {
+        if(n % b == 0) {
+            int a = n / b;
+            if(a >= b && a - b < min_diff) {
+                best_a = a; best_b = b; min_diff = a - b;
             }
         }
     }
-    return {bestP, bestQ};
-}
-
-// Returns the set of all unique pencil grids (sorted lexicographically)
-std::vector<std::array<int,3>> all_pencil_grids(int P, int Q)
-{
-    std::vector<std::array<int,3>> result;
-    std::set<std::array<int,3>> unique;
-    std::array<int,3> base{P, Q, 1};
-    std::sort(base.begin(), base.end());
-    do {
-        unique.insert(base);
-    } while(std::next_permutation(base.begin(), base.end()));
-    for(const auto& g : unique)
-        result.push_back(g);
-    return result;
+    return {best_a, best_b};
 }
 
 // Main function
@@ -2824,46 +2794,41 @@ std::vector<std::array<int,3>> get_transpose_plan(const std::array<int,3>& input
                                                   const std::array<int,3>& output_grid)
 {
     int prod = input_grid[0] * input_grid[1] * input_grid[2];
-    auto [P, Q] = find_balanced_factors(prod);
-    auto pencils = all_pencil_grids(P, Q);
+
+    // Generate the three unique pencil grids (one for each 1 position)
+    std::vector<std::array<int,3>> pencils;
+    for(int pos = 0; pos < 3; ++pos) {
+        std::array<int,3> g;
+        auto [A,B] = find_balanced_factors(prod);
+        // Set 1 at pos, A, B at remaining
+        int idx = 0;
+        for(int d=0; d<3; ++d) {
+            if(d == pos) g[d] = 1;
+            else g[d] = (idx++ == 0) ? A : B;
+        }
+        // Ensure that for {2,2,2}, you get {1,2,4}, {2,1,4}, {4,2,1}
+        std::sort(g.begin(), g.end(), [](int x,int y){return x==1 ? true : (y==1 ? false : x<y);});
+        // Only add if unique (skip duplicates, and input/output)
+        bool duplicate = false;
+        if(array_equal(g, input_grid) || array_equal(g, output_grid)) continue;
+        for(const auto& prev : pencils) if(array_equal(prev,g)) duplicate = true;
+        if(!duplicate) pencils.push_back(g);
+    }
 
     std::vector<std::array<int,3>> plan;
-
-    // Case 1: Both input and output are the same, and all elements equal (cube grid)
-    if(array_equal(input_grid, output_grid))
-    {
-        plan.push_back(input_grid);
-        for(const auto& g : pencils)
-        {
-            if(!array_equal(g, input_grid))
-                plan.push_back(g);
-        }
-        plan.push_back(output_grid);
-    }
-    else
-    {
-        // Plan: input -> [all pencils, skipping input/output] -> output
-        plan.push_back(input_grid);
-        for(const auto& g : pencils)
-        {
-            if(!array_equal(g, input_grid) && !array_equal(g, output_grid))
-                plan.push_back(g);
-        }
-        plan.push_back(output_grid);
-    }
+    plan.push_back(input_grid);
+    for(const auto& g : pencils) plan.push_back(g);
+    plan.push_back(output_grid);
     return plan;
 }
 
 
-// Pretty print
-int call_print = 1;
 void print_plan(const std::vector<std::array<int,3>>& plan)
 {
     for(const auto& g : plan)
-        std::cout << "@@@ transpose_plan" << call_print << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
-
-    call_print+=1;
+        std::cout << "@@tranpose_plan {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
 }
+
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
