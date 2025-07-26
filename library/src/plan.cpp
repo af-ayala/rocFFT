@@ -2767,17 +2767,12 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
 }
 
 
-// Utility: check if two arrays are equal
-template<typename T, size_t N>
-bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b) {
-    return std::equal(a.begin(), a.end(), b.begin());
-}
-
 // Generate all unique permutations of {P, Q, 1}
 std::vector<std::array<int,3>> generate_unique_pencil_grids(int P, int Q)
 {
     std::set<std::array<int,3>> unique;
     std::array<int,3> base{P, Q, 1};
+    std::sort(base.begin(), base.end()); // for std::next_permutation
     do {
         unique.insert(base);
     } while(std::next_permutation(base.begin(), base.end()));
@@ -2803,32 +2798,56 @@ std::pair<int,int> find_balanced_factors(int prod)
     return {bestP, bestQ};
 }
 
+// Returns the set of all unique pencil grids (sorted lexicographically)
+std::vector<std::array<int,3>> all_pencil_grids(int P, int Q)
+{
+    std::vector<std::array<int,3>> result;
+    std::set<std::array<int,3>> unique;
+    std::array<int,3> base{P, Q, 1};
+    std::sort(base.begin(), base.end());
+    do {
+        unique.insert(base);
+    } while(std::next_permutation(base.begin(), base.end()));
+    for(const auto& g : unique)
+        result.push_back(g);
+    return result;
+}
+
+// Main function
 std::vector<std::array<int,3>> get_transpose_plan(const std::array<int,3>& input_grid,
                                                   const std::array<int,3>& output_grid)
 {
     int prod = input_grid[0] * input_grid[1] * input_grid[2];
     auto [P, Q] = find_balanced_factors(prod);
+    auto pencils = all_pencil_grids(P, Q);
 
-    // All unique grids with {P, Q, 1}
-    auto pencils = generate_unique_pencil_grids(P, Q);
-
-    // Start with input_grid
     std::vector<std::array<int,3>> plan;
-    plan.push_back(input_grid);
 
-    // Add each unique pencil grid that's neither input nor output
-    for(const auto& grid : pencils)
+    // Case 1: Both input and output are the same, and all elements equal (cube grid)
+    if(array_equal(input_grid, output_grid))
     {
-        if(!array_equal(grid, input_grid) && !array_equal(grid, output_grid))
-            plan.push_back(grid);
-    }
-
-    // Add output_grid if not already added
-    if(!array_equal(output_grid, input_grid))
+        plan.push_back(input_grid);
+        for(const auto& g : pencils)
+        {
+            if(!array_equal(g, input_grid))
+                plan.push_back(g);
+        }
         plan.push_back(output_grid);
-
+    }
+    else
+    {
+        // Plan: input -> [all pencils, skipping input/output] -> output
+        plan.push_back(input_grid);
+        for(const auto& g : pencils)
+        {
+            if(!array_equal(g, input_grid) && !array_equal(g, output_grid))
+                plan.push_back(g);
+        }
+        plan.push_back(output_grid);
+    }
     return plan;
 }
+
 
 // Pretty print
 void print_plan(const std::vector<std::array<int,3>>& plan)
