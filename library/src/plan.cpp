@@ -2882,16 +2882,16 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             std::cout << r << " ";
         std::cout << std::endl;
 
-        // std::vector<int> pencilize_axes = {1, 2};
-        std::vector<int> pencilize_axes;
-        for(int axis = 0; axis < 3; ++axis)
-        {
-            // if FFT not yet done, and axis is SPLIT at output, pencilize;
-            // otherwise, the FFT in [axis] dimension will be performed as the final step
-            if(!fft_done[axis]
-               && DimensionSplitInField(lengths[axis], axis, desc.outFields.front()))
-                pencilize_axes.push_back(axis);
-        }
+        std::vector<int> pencilize_axes = {1, 2};
+        // std::vector<int> pencilize_axes;
+        // for(int axis = 0; axis < 3; ++axis)
+        // {
+        //     // if FFT not yet done, and axis is SPLIT at output, pencilize;
+        //     // otherwise, the FFT in [axis] dimension will be performed as the final step
+        //     if(!fft_done[axis]
+        //        && DimensionSplitInField(lengths[axis], axis, desc.outFields.front()))
+        //         pencilize_axes.push_back(axis);
+        // }
 
         for(size_t step = 0; step < pencilize_axes.size(); ++step)
         {
