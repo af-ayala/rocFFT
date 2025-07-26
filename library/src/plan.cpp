@@ -2856,11 +2856,13 @@ std::vector<std::array<int,3>> get_transpose_plan(const std::array<int,3>& input
 
 
 // Pretty print
+int call_print = 1;
 void print_plan(const std::vector<std::array<int,3>>& plan)
 {
     for(const auto& g : plan)
-        std::cout << "@@@transpose_plan new {" << g[0] << "," << g[1] << "," << g[2] << "} ";
-    std::cout << std::endl;
+        std::cout << "@@@ transpose_plan" << call_print << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
+
+    call_print+=1;
 }
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
