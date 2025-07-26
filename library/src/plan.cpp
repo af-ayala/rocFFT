@@ -2794,68 +2794,152 @@ inline std::vector<int> contiguous_axes(const std::array<int,3>& grid)
     return axes;
 }
 
-std::vector<TransposeStep> plan_transpose_sequence(
-    const std::vector<int>& in_grid,
-    const std::vector<int>& out_grid)
+std::vector<TransposeStep> plan_transpose_sequence(const std::array<int,3>& input_grid,
+                                                  const std::array<int,3>& output_grid)
 {
-    assert(in_grid.size() == out_grid.size());
-    const int ndim = in_grid.size();
     std::vector<TransposeStep> plan;
+    auto current = input_grid;
 
-    // 1D: trivial, always just "Default"
-    if(ndim == 1)
+    // If already a permutation, go directly with pencils
+    if(is_permutation(input_grid, output_grid))
     {
-        plan.push_back({in_grid, TransposeType::Default, "1D: only default slab transpose"});
-        return plan;
-    }
-
-    // Start from the input grid
-    std::vector<int> cur_grid = in_grid;
-
-    // Step 1: If not a permutation, first do slab (default) to grid with a contiguous dimension
-    if(!is_permutation(in_grid, out_grid))
-    {
-        // Make a slab: shape has all but one dim == 1, the rest is product
-        std::vector<int> slab_grid(ndim, 1);
-        int max_dim = std::distance(in_grid.begin(), std::max_element(in_grid.begin(), in_grid.end()));
-        slab_grid[max_dim] = std::accumulate(in_grid.begin(), in_grid.end(), 1, std::multiplies<int>());
-        plan.push_back({slab_grid, TransposeType::Default, "Initial slab decomposition"});
-        cur_grid = slab_grid;
-    }
-
-    // Step 2: Now, step through permutations via pencils if necessary
-    while(cur_grid != out_grid)
-    {
-        // Find the next target grid in the permutation path
-        // In 2D, only one pencil is needed if not a slab, in 3D possibly two
-        // Find the next permutation by swapping two axes
-        std::vector<int> next_grid = cur_grid;
-
-        // For each dimension, if current dim doesn't match output, swap it with the correct one
-        for(int i=0; i<ndim; ++i)
+        // Determine permutation steps needed
+        std::array<int,3> next = current;
+        while(next != output_grid)
         {
-            if(next_grid[i] != out_grid[i])
+            // Find next permutation step (greedy)
+            for(int i=0; i<3; ++i)
             {
-                // Find where out_grid[i] currently is, swap
-                auto it = std::find(next_grid.begin(), next_grid.end(), out_grid[i]);
-                if(it != next_grid.end())
+                if(next[i] != output_grid[i])
                 {
-                    int j = std::distance(next_grid.begin(), it);
-                    std::swap(next_grid[i], next_grid[j]);
-                    plan.push_back({next_grid, TransposeType::Pencil, "Pencil permutation step"});
-                    break;
+                    // Swap to make next[i] == output_grid[i]
+                    for(int j=i+1; j<3; ++j)
+                    {
+                        if(next[j] == output_grid[i])
+                        {
+                            std::swap(next[i], next[j]);
+                            plan.push_back({current, next, TransposeType::Pencil, contiguous_axes(next)});
+                            current = next;
+                            break;
+                        }
+                    }
+                    break; // restart outer loop with new current
                 }
             }
         }
-        cur_grid = next_grid;
+        return plan;
+    }
+    // Not a permutation: do a slab to get a pencil first
+    std::array<int,3> pencil_grid = current;
+    int slab_axis = -1;
+    for(int d=0; d<3; ++d)
+    {
+        if(current[d] != 1)
+        {
+            pencil_grid = current;
+            pencil_grid[d] = 1;
+            slab_axis = d;
+            break;
+        }
+    }
+    plan.push_back({current, pencil_grid, TransposeType::Slab, contiguous_axes(pencil_grid)});
+    current = pencil_grid;
+
+    // Now bring to output grid using pencils
+    while(current != output_grid)
+    {
+        for(int i=0; i<3; ++i)
+        {
+            if(current[i] != output_grid[i])
+            {
+                // Swap to make current[i] == output_grid[i]
+                for(int j=i+1; j<3; ++j)
+                {
+                    if(current[j] == output_grid[i])
+                    {
+                        auto next = current;
+                        std::swap(next[i], next[j]);
+                        plan.push_back({current, next, TransposeType::Pencil, contiguous_axes(next)});
+                        current = next;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
     }
 
-    // Step 3: If cur_grid still not equal out_grid, do a final default (slab) transpose
-    if(cur_grid != out_grid)
-        plan.push_back({out_grid, TransposeType::Default, "Final slab transpose"});
-
+    // Final check: if needed, final slab
+    if(current != output_grid)
+    {
+        plan.push_back({current, output_grid, TransposeType::Slab, contiguous_axes(output_grid)});
+    }
     return plan;
 }
+
+
+// std::vector<TransposeStep> plan_transpose_sequence(
+//     const std::vector<int>& in_grid,
+//     const std::vector<int>& out_grid)
+// {
+//     assert(in_grid.size() == out_grid.size());
+//     const int ndim = in_grid.size();
+//     std::vector<TransposeStep> plan;
+
+//     // 1D: trivial, always just "Default"
+//     if(ndim == 1)
+//     {
+//         plan.push_back({in_grid, TransposeType::Default, "1D: only default slab transpose"});
+//         return plan;
+//     }
+
+//     // Start from the input grid
+//     std::vector<int> cur_grid = in_grid;
+
+//     // Step 1: If not a permutation, first do slab (default) to grid with a contiguous dimension
+//     if(!is_permutation(in_grid, out_grid))
+//     {
+//         // Make a slab: shape has all but one dim == 1, the rest is product
+//         std::vector<int> slab_grid(ndim, 1);
+//         int max_dim = std::distance(in_grid.begin(), std::max_element(in_grid.begin(), in_grid.end()));
+//         slab_grid[max_dim] = std::accumulate(in_grid.begin(), in_grid.end(), 1, std::multiplies<int>());
+//         plan.push_back({slab_grid, TransposeType::Default, "Initial slab decomposition"});
+//         cur_grid = slab_grid;
+//     }
+
+//     // Step 2: Now, step through permutations via pencils if necessary
+//     while(cur_grid != out_grid)
+//     {
+//         // Find the next target grid in the permutation path
+//         // In 2D, only one pencil is needed if not a slab, in 3D possibly two
+//         // Find the next permutation by swapping two axes
+//         std::vector<int> next_grid = cur_grid;
+
+//         // For each dimension, if current dim doesn't match output, swap it with the correct one
+//         for(int i=0; i<ndim; ++i)
+//         {
+//             if(next_grid[i] != out_grid[i])
+//             {
+//                 // Find where out_grid[i] currently is, swap
+//                 auto it = std::find(next_grid.begin(), next_grid.end(), out_grid[i]);
+//                 if(it != next_grid.end())
+//                 {
+//                     int j = std::distance(next_grid.begin(), it);
+//                     std::swap(next_grid[i], next_grid[j]);
+//                     plan.push_back({next_grid, TransposeType::Pencil, "Pencil permutation step"});
+//                     break;
+//                 }
+//             }
+//         }
+//         cur_grid = next_grid;
+//     }
+
+//     // Step 3: If cur_grid still not equal out_grid, do a final default (slab) transpose
+//     if(cur_grid != out_grid)
+//         plan.push_back({out_grid, TransposeType::Default, "Final slab transpose"});
+
+//     return plan;
+// }
 
 void print_plan(const std::vector<TransposeStep>& plan)
 {
