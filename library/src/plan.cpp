@@ -2766,25 +2766,54 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
     return out;
 }
 
-enum class TransposeType { Default, Pencil };
+// enum class TransposeType { Default, Pencil };
+
+// struct TransposeStep
+// {
+//     std::vector<int> grid; // The logical processor grid after this step
+//     TransposeType type;
+//     std::string description;
+// };
+
+// // checks if two grids are permutations of each other
+// bool is_permutation(const std::vector<int>& a, const std::vector<int>& b)
+// {
+//     std::vector<int> aa = a, bb = b;
+//     std::sort(aa.begin(), aa.end());
+//     std::sort(bb.begin(), bb.end());
+//     return aa == bb;
+// }
+
+// // check axis contiguity from processor grid
+// inline std::vector<int> contiguous_axes(const std::array<int,3>& grid)
+// {
+//     std::vector<int> axes;
+//     for(int d=0; d<3; ++d)
+//         if(grid[d]==1)
+//             axes.push_back(d);
+//     return axes;
+// }
+
+enum class TransposeType { Slab, Pencil };
 
 struct TransposeStep
 {
-    std::vector<int> grid; // The logical processor grid after this step
+    std::array<int, 3> from_grid;
+    std::array<int, 3> to_grid;
     TransposeType type;
-    std::string description;
+    std::vector<int> fft_axes; // Which axes are contiguous (and FFT-able) after this step
 };
 
-// checks if two grids are permutations of each other
-bool is_permutation(const std::vector<int>& a, const std::vector<int>& b)
+// Helper: checks if two grids are permutations of each other
+inline bool is_permutation(const std::array<int,3>& a, const std::array<int,3>& b)
 {
-    std::vector<int> aa = a, bb = b;
+    std::array<int,3> aa = a, bb = b;
     std::sort(aa.begin(), aa.end());
     std::sort(bb.begin(), bb.end());
     return aa == bb;
 }
 
-// check axis contiguity from processor grid
+// Helper: find which axes are contiguous (==1 in grid)
 inline std::vector<int> contiguous_axes(const std::array<int,3>& grid)
 {
     std::vector<int> axes;
