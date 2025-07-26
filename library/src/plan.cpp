@@ -2975,7 +2975,7 @@ void print_plan(const std::vector<TransposeStep>& plan)
         std::cout << "@@@@tep " << i << "from grid : ";
         for(int x : plan[i].from_grid) std::cout << x << " ";
         std::cout << " to grid : "; 
-        for(int x : plan[i].from_grid) std::cout << x << " ";
+        for(int x : plan[i].to_grid) std::cout << x << " ";
         std::cout << ", type: "; 
         if(plan[i].type == TransposeType::Slab) std::cout << "Slab";
         else std::cout << "Pencil";
@@ -3065,7 +3065,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
 
     // 3D example
-    std::array<int, 3> in_grid3d{2,2,2}, out_grid3d{2,2,2};
+    // std::array<int, 3> in_grid3d{2,2,2}, out_grid3d{2,2,2};
+    std::array<int, 3> in_grid3d{2,2,1}, out_grid3d{1,2,2};
     auto plan3d = plan_transpose_sequence(in_grid3d, out_grid3d);
     print_plan(plan3d);
     std::cout << "@@size of plan3d is " << plan3d.size() << std::endl;
