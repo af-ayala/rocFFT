@@ -2823,13 +2823,6 @@ std::vector<std::array<int,3>> get_transpose_plan(const std::array<int,3>& input
 }
 
 
-void print_plan(const std::vector<std::array<int,3>>& plan)
-{
-    for(const auto& g : plan)
-        std::cout << "@@tranpose_plan {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
-}
-
-
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
     const auto local_comm_rank = get_local_comm_rank();
@@ -2912,6 +2905,10 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     std::array<int,3> g3{2,2,2}, g4{2,2,2};
     auto plan2 = get_transpose_plan(g3, g4);
     print_plan(plan2); 
+
+    for(const auto& g : plan2)
+        std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
+
 
     auto is_permutation = [](const std::array<int, 3>& a, const std::array<int, 3>& b) {
         std::array<int, 3> x = a, y = b;
