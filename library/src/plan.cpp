@@ -2861,7 +2861,7 @@ void print_plan(const std::vector<TransposeStep>& plan)
 {
     for(size_t i=0; i<plan.size(); ++i)
     {
-        std::cout << "Step " << i << ": ";
+        std::cout << "@@@@Step " << i << ": ";
         for(int x : plan[i].grid) std::cout << x << " ";
         std::cout << " -- ";
         if(plan[i].type == TransposeType::Default) std::cout << "Default";
@@ -2957,14 +2957,14 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     print_plan(plan3d);
 
     // 2D example
-    std::vector<int> in_grid2d{2,2}, out_grid2d{1,4};
-    auto plan2d = plan_transpose_sequence(in_grid2d, out_grid2d);
-    print_plan(plan2d);
+    // std::vector<int> in_grid2d{2,2}, out_grid2d{1,4};
+    // auto plan2d = plan_transpose_sequence(in_grid2d, out_grid2d);
+    // print_plan(plan2d);
 
-    // 1D example
-    std::vector<int> in_grid1d{8}, out_grid1d{8};
-    auto plan1d = plan_transpose_sequence(in_grid1d, out_grid1d);
-    print_plan(plan1d);
+    // // 1D example
+    // std::vector<int> in_grid1d{8}, out_grid1d{8};
+    // auto plan1d = plan_transpose_sequence(in_grid1d, out_grid1d);
+    // print_plan(plan1d);
 
 
     auto is_permutation = [](const std::array<int, 3>& a, const std::array<int, 3>& b) {
