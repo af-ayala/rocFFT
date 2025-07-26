@@ -2972,7 +2972,7 @@ void print_plan(const std::vector<TransposeStep>& plan)
 {
     for(size_t i=0; i<plan.size(); ++i)
     {
-        std::cout << "@@@@Step " << i << "from grid : ";
+        std::cout << "@@@@tep " << i << "from grid : ";
         for(int x : plan[i].from_grid) std::cout << x << " ";
         std::cout << " to grid : "; 
         for(int x : plan[i].from_grid) std::cout << x << " ";
@@ -3068,6 +3068,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     std::array<int, 3> in_grid3d{2,2,2}, out_grid3d{2,2,2};
     auto plan3d = plan_transpose_sequence(in_grid3d, out_grid3d);
     print_plan(plan3d);
+    std::cout << "@@size of plan3d is " << plan3d.size() << std::endl;
 
     // 2D example
     // std::vector<int> in_grid2d{2,2}, out_grid2d{1,4};
