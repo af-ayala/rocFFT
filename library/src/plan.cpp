@@ -2874,11 +2874,22 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
         // track which dimensions have already been FFTed
         std::vector<int> fft_done(3, 0);
+        // track if pencil-shaped transposition has been performed to make the data contiguous along an axis
+        std::vector<int> transpose_done(3, 0);
+
         for(auto d : contiguousInputDims)
-            fft_done[d] = 1;
+        {
+            fft_done[d]       = 1;
+            transpose_done[d] = 1; // there is no need to reshape d-pencils
+        }
 
         std::cout << "[Rank " << my_global_rank << "] ffts done before for-loop : ";
         for(auto r : fft_done)
+            std::cout << r << " ";
+        std::cout << std::endl;
+
+        std::cout << "[Rank " << my_global_rank << "] nonContiguousDims : ";
+        for(auto r : nonContiguousDims)
             std::cout << r << " ";
         std::cout << std::endl;
 
@@ -2893,127 +2904,137 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         //         pencilize_axes.push_back(axis);
         // }
 
-        for(size_t step = 0; step < pencilize_axes.size(); ++step)
+        // for(size_t step = 0; step < pencilize_axes.size(); ++step)
+        // 3 needs to be replaced by the maximun number of transforms
+        for(size_t step = 0; step < 3; ++step)
         {
-            int pencil_axis = pencilize_axes[step];
+            // int pencil_axis = pencilize_axes[step];
+            int pencil_axis = step;
 
             std::cout << "[Rank " << my_global_rank << "] Step " << step
                       << ", Pencil axis: " << pencil_axis << std::endl;
 
             // create the next field by splitting using a heuristic approach
-            rocfft_field_t nextField
-                = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, pencil_axis, nprocs);
-
-            std::cout << "___*___ nextField bricks:" << std::endl;
-            for(const auto& b : nextField.bricks)
+            if(!transpose_done[step])
             {
-                std::cout << "  lower: ";
-                for(auto v : b.lower)
-                    std::cout << v << " ";
-                std::cout << "  upper: ";
-                for(auto v : b.upper)
-                    std::cout << v << " ";
-                std::cout << "  rank: " << b.location.comm_rank;
-                std::cout << "  dev: " << b.location.device;
-                std::cout << std::endl;
-            }
+                // create intermediate grid
+                rocfft_field_t nextField
+                    = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, pencil_axis, nprocs);
 
-            std::array<int, 3> nf_grid = infer_grid_from_bricks(nextField.bricks);
-            std::cout << "___*___  nextField grid: " << nf_grid[0] << " " << nf_grid[1] << " "
-                      << nf_grid[2] << std::endl;
-
-            // perform global transposition
-            if(currentField.bricks != nextField.bricks)
-            {
-                // allocate temp buffers for nextField
-                std::vector<TempBufferLease> tempLeases;
-                std::vector<BufferPtr>       tempBufs;
-                for(size_t b = 0; b < nextField.bricks.size(); ++b)
+                std::cout << "___*___ nextField bricks:" << std::endl;
+                for(const auto& b : nextField.bricks)
                 {
-                    tempLeases.emplace_back(tempBuffers,
-                                            my_global_rank,
-                                            nextField.bricks[b].location,
-                                            nextField.bricks[b].count_elems(),
-                                            elem_size);
-                    tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
+                    std::cout << "  lower: ";
+                    for(auto v : b.lower)
+                        std::cout << v << " ";
+                    std::cout << "  upper: ";
+                    for(auto v : b.upper)
+                        std::cout << v << " ";
+                    std::cout << "  rank: " << b.location.comm_rank;
+                    std::cout << "  dev: " << b.location.device;
+                    std::cout << std::endl;
                 }
 
-                // determine overlapping ranks (subcommunicator members)
-                std::set<int> pencil_neighbors;
-                for(const auto& out_brick : nextField.bricks)
+                std::array<int, 3> nf_grid = infer_grid_from_bricks(nextField.bricks);
+                std::cout << "___*___  nextField grid: " << nf_grid[0] << " " << nf_grid[1] << " "
+                          << nf_grid[2] << std::endl;
+
+                // perform intermediate global transpositions
+                if(currentField.bricks != nextField.bricks
+                   && nextField.bricks != desc.outFields.front().bricks)
                 {
-                    if(out_brick.location.comm_rank == my_global_rank)
+                    // allocate temp buffers for nextField
+                    std::vector<TempBufferLease> tempLeases;
+                    std::vector<BufferPtr>       tempBufs;
+                    for(size_t b = 0; b < nextField.bricks.size(); ++b)
                     {
-                        for(const auto& in_brick : currentField.bricks)
-                            if(!in_brick.intersect(out_brick).empty())
-                                pencil_neighbors.insert(in_brick.location.comm_rank);
+                        tempLeases.emplace_back(tempBuffers,
+                                                my_global_rank,
+                                                nextField.bricks[b].location,
+                                                nextField.bricks[b].count_elems(),
+                                                elem_size);
+                        tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
                     }
+
+                    // determine overlapping ranks (subcommunicator members)
+                    std::set<int> pencil_neighbors;
+                    for(const auto& out_brick : nextField.bricks)
+                    {
+                        if(out_brick.location.comm_rank == my_global_rank)
+                        {
+                            for(const auto& in_brick : currentField.bricks)
+                                if(!in_brick.intersect(out_brick).empty())
+                                    pencil_neighbors.insert(in_brick.location.comm_rank);
+                        }
+                    }
+
+                    std::cout << "[Rank " << my_global_rank << "] My pencil_neighbors: ";
+                    for(auto r : pencil_neighbors)
+                        std::cout << r << " ";
+                    std::cout << std::endl;
+
+                    // create subcommunicator using MPI_Group (RAII)
+                    MPI_Group world_group;
+                    MPI_Comm_group(desc.mpi_comm, &world_group);
+
+                    std::vector<int> pencil_neighbors_vec(pencil_neighbors.begin(),
+                                                          pencil_neighbors.end());
+
+                    MPI_Group pencil_group;
+                    MPI_Group_incl(world_group,
+                                   static_cast<int>(pencil_neighbors_vec.size()),
+                                   pencil_neighbors_vec.data(),
+                                   &pencil_group);
+
+                    MPI_Comm tmp_comm = MPI_COMM_NULL;
+                    MPI_Comm_create(desc.mpi_comm, pencil_group, &tmp_comm);
+
+                    MPI_Group_free(&pencil_group);
+                    MPI_Group_free(&world_group);
+
+                    MPI_Comm_wrapper_t pencil_comm;
+                    bool               valid_pencil_comm = false;
+                    int                pencil_local_rank = -1, pencil_comm_size = -1;
+                    if(tmp_comm != MPI_COMM_NULL)
+                    {
+                        pencil_comm       = MPI_Comm_wrapper_t::from_raw(tmp_comm);
+                        valid_pencil_comm = true;
+
+                        MPI_Comm_rank(pencil_comm, &pencil_local_rank);
+                        MPI_Comm_size(pencil_comm, &pencil_comm_size);
+                        std::cout << "[Rank " << my_global_rank
+                                  << "] pencil_local_rank = " << pencil_local_rank
+                                  << " pencil_comm_size = " << pencil_comm_size << std::endl;
+                    }
+                    else
+                    {
+                        throw std::runtime_error(
+                            "Failed to create a valid Pencil sub-communicator");
+                    }
+
+                    MPI_Barrier(desc.mpi_comm);
+
+                    std::vector<size_t> transposeItems;
+                    GlobalTranspose(
+                        elem_size,
+                        currentField,
+                        nextField,
+                        currentBufs,
+                        tempBufs,
+                        currentAntecedents,
+                        transposeItems,
+                        transposeNumber++,
+                        (valid_pencil_comm ? std::move(pencil_comm) : MPI_Comm_wrapper_t{}));
+
+                    transpose_done[pencil_axis] = 1;
+                    std::cout << " size of currentBufs " << currentBufs.size() << std::endl;
+                    std::cout << " size of tempBufs " << tempBufs.size() << std::endl;
+
+                    currentField       = nextField;
+                    currentBufs        = tempBufs;
+                    currentAntecedents = transposeItems;
+                    MPI_Barrier(desc.mpi_comm);
                 }
-
-                std::cout << "[Rank " << my_global_rank << "] My pencil_neighbors: ";
-                for(auto r : pencil_neighbors)
-                    std::cout << r << " ";
-                std::cout << std::endl;
-
-                // create subcommunicator using MPI_Group (RAII)
-                MPI_Group world_group;
-                MPI_Comm_group(desc.mpi_comm, &world_group);
-
-                std::vector<int> pencil_neighbors_vec(pencil_neighbors.begin(),
-                                                      pencil_neighbors.end());
-
-                MPI_Group pencil_group;
-                MPI_Group_incl(world_group,
-                               static_cast<int>(pencil_neighbors_vec.size()),
-                               pencil_neighbors_vec.data(),
-                               &pencil_group);
-
-                MPI_Comm tmp_comm = MPI_COMM_NULL;
-                MPI_Comm_create(desc.mpi_comm, pencil_group, &tmp_comm);
-
-                MPI_Group_free(&pencil_group);
-                MPI_Group_free(&world_group);
-
-                MPI_Comm_wrapper_t pencil_comm;
-                bool               valid_pencil_comm = false;
-                int                pencil_local_rank = -1, pencil_comm_size = -1;
-                if(tmp_comm != MPI_COMM_NULL)
-                {
-                    pencil_comm       = MPI_Comm_wrapper_t::from_raw(tmp_comm);
-                    valid_pencil_comm = true;
-
-                    MPI_Comm_rank(pencil_comm, &pencil_local_rank);
-                    MPI_Comm_size(pencil_comm, &pencil_comm_size);
-                    std::cout << "[Rank " << my_global_rank
-                              << "] pencil_local_rank = " << pencil_local_rank
-                              << " pencil_comm_size = " << pencil_comm_size << std::endl;
-                }
-                else
-                {
-                    throw std::runtime_error("Failed to create a valid Pencil sub-communicator");
-                }
-
-                MPI_Barrier(desc.mpi_comm);
-
-                std::vector<size_t> transposeItems;
-                GlobalTranspose(
-                    elem_size,
-                    currentField,
-                    nextField,
-                    currentBufs,
-                    tempBufs,
-                    currentAntecedents,
-                    transposeItems,
-                    transposeNumber++,
-                    (valid_pencil_comm ? std::move(pencil_comm) : MPI_Comm_wrapper_t{}));
-
-                std::cout << " size of currentBufs " << currentBufs.size() << std::endl;
-                std::cout << " size of tempBufs " << tempBufs.size() << std::endl;
-
-                currentField       = nextField;
-                currentBufs        = tempBufs;
-                currentAntecedents = transposeItems;
-                MPI_Barrier(desc.mpi_comm);
             }
 
             // once data is transposed, perform intermediate FFT
@@ -3038,12 +3059,11 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
         std::array<int, 3> last_grid1 = infer_grid_from_bricks(currentField.bricks);
         std::cout << "_Final__  currentField grid: " << last_grid1[0] << " " << last_grid1[1] << " "
-                    << last_grid1[2] << std::endl;
+                  << last_grid1[2] << std::endl;
 
         std::array<int, 3> last_grid2 = infer_grid_from_bricks(desc.outFields.front().bricks);
         std::cout << "_Final__  outfield grid: " << last_grid2[0] << " " << last_grid2[1] << " "
-                    << last_grid2[2] << std::endl;
-
+                  << last_grid2[2] << std::endl;
 
         if(need_final_transpose)
         {
