@@ -2766,225 +2766,77 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
     return out;
 }
 
-// enum class TransposeType { Default, Pencil };
 
-// struct TransposeStep
-// {
-//     std::vector<int> grid; // The logical processor grid after this step
-//     TransposeType type;
-//     std::string description;
-// };
-
-// // checks if two grids are permutations of each other
-// bool is_permutation(const std::vector<int>& a, const std::vector<int>& b)
-// {
-//     std::vector<int> aa = a, bb = b;
-//     std::sort(aa.begin(), aa.end());
-//     std::sort(bb.begin(), bb.end());
-//     return aa == bb;
-// }
-
-// // check axis contiguity from processor grid
-// inline std::vector<int> contiguous_axes(const std::array<int,3>& grid)
-// {
-//     std::vector<int> axes;
-//     for(int d=0; d<3; ++d)
-//         if(grid[d]==1)
-//             axes.push_back(d);
-//     return axes;
-// }
-
-enum class TransposeType { Slab, Pencil };
-
-struct TransposeStep
-{
-    std::array<int, 3> from_grid;
-    std::array<int, 3> to_grid;
-    TransposeType type;
-    std::vector<int> fft_axes; // Which axes are contiguous (and FFT-able) after this step
-};
-
-// Helper: checks if two grids are permutations of each other
-inline bool is_permutation(const std::array<int,3>& a, const std::array<int,3>& b)
-{
-    std::array<int,3> aa = a, bb = b;
-    std::sort(aa.begin(), aa.end());
-    std::sort(bb.begin(), bb.end());
-    return aa == bb;
+// Utility: check if two arrays are equal
+template<typename T, size_t N>
+bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b) {
+    return std::equal(a.begin(), a.end(), b.begin());
 }
 
-// Helper: find which axes are contiguous (==1 in grid)
-inline std::vector<int> contiguous_axes(const std::array<int,3>& grid)
+// Generate all unique permutations of {P, Q, 1}
+std::vector<std::array<int,3>> generate_unique_pencil_grids(int P, int Q)
 {
-    std::vector<int> axes;
-    for(int d=0; d<3; ++d)
-        if(grid[d]==1)
-            axes.push_back(d);
-    return axes;
+    std::set<std::array<int,3>> unique;
+    std::array<int,3> base{P, Q, 1};
+    do {
+        unique.insert(base);
+    } while(std::next_permutation(base.begin(), base.end()));
+    return std::vector<std::array<int,3>>(unique.begin(), unique.end());
 }
 
-std::vector<TransposeStep> plan_transpose_sequence(const std::array<int,3>& input_grid,
+// Find P, Q for the product such that P*Q=prod, P>=Q, and as balanced as possible
+std::pair<int,int> find_balanced_factors(int prod)
+{
+    int bestP = prod, bestQ = 1;
+    int minDiff = prod - 1;
+    for(int q = 1; q <= std::sqrt(prod); ++q)
+    {
+        if(prod % q == 0)
+        {
+            int p = prod / q;
+            if(p - q < minDiff)
+            {
+                bestP = p; bestQ = q; minDiff = p - q;
+            }
+        }
+    }
+    return {bestP, bestQ};
+}
+
+std::vector<std::array<int,3>> get_transpose_plan(const std::array<int,3>& input_grid,
                                                   const std::array<int,3>& output_grid)
 {
-    std::vector<TransposeStep> plan;
-    auto current = input_grid;
+    int prod = input_grid[0] * input_grid[1] * input_grid[2];
+    auto [P, Q] = find_balanced_factors(prod);
 
-    // If already a permutation, go directly with pencils
-    if(is_permutation(input_grid, output_grid))
-    {
-        // Determine permutation steps needed
-        std::array<int,3> next = current;
-        while(next != output_grid)
-        {
-            // Find next permutation step (greedy)
-            for(int i=0; i<3; ++i)
-            {
-                if(next[i] != output_grid[i])
-                {
-                    // Swap to make next[i] == output_grid[i]
-                    for(int j=i+1; j<3; ++j)
-                    {
-                        if(next[j] == output_grid[i])
-                        {
-                            std::swap(next[i], next[j]);
-                            plan.push_back({current, next, TransposeType::Pencil, contiguous_axes(next)});
-                            current = next;
-                            break;
-                        }
-                    }
-                    break; // restart outer loop with new current
-                }
-            }
-        }
-        return plan;
-    }
-    // Not a permutation: do a slab to get a pencil first
-    std::array<int,3> pencil_grid = current;
-    for(int d=0; d<3; ++d)
-    {
-        if(current[d] != 1)
-        {
-            pencil_grid = current;
-            pencil_grid[d] = 1;
-            break;
-        }
-    }
-    plan.push_back({current, pencil_grid, TransposeType::Slab, contiguous_axes(pencil_grid)});
-    current = pencil_grid;
+    // All unique grids with {P, Q, 1}
+    auto pencils = generate_unique_pencil_grids(P, Q);
 
-    // Now bring to output grid using pencils
-    while(current != output_grid)
+    // Start with input_grid
+    std::vector<std::array<int,3>> plan;
+    plan.push_back(input_grid);
+
+    // Add each unique pencil grid that's neither input nor output
+    for(const auto& grid : pencils)
     {
-        for(int i=0; i<3; ++i)
-        {
-            if(current[i] != output_grid[i])
-            {
-                // Swap to make current[i] == output_grid[i]
-                for(int j=i+1; j<3; ++j)
-                {
-                    if(current[j] == output_grid[i])
-                    {
-                        auto next = current;
-                        std::swap(next[i], next[j]);
-                        plan.push_back({current, next, TransposeType::Pencil, contiguous_axes(next)});
-                        current = next;
-                        break;
-                    }
-                }
-                break;
-            }
-        }
+        if(!array_equal(grid, input_grid) && !array_equal(grid, output_grid))
+            plan.push_back(grid);
     }
 
-    // Final check: if needed, final slab
-    if(current != output_grid)
-    {
-        plan.push_back({current, output_grid, TransposeType::Slab, contiguous_axes(output_grid)});
-    }
+    // Add output_grid if not already added
+    if(!array_equal(output_grid, input_grid))
+        plan.push_back(output_grid);
+
     return plan;
 }
 
-
-// std::vector<TransposeStep> plan_transpose_sequence(
-//     const std::vector<int>& in_grid,
-//     const std::vector<int>& out_grid)
-// {
-//     assert(in_grid.size() == out_grid.size());
-//     const int ndim = in_grid.size();
-//     std::vector<TransposeStep> plan;
-
-//     // 1D: trivial, always just "Default"
-//     if(ndim == 1)
-//     {
-//         plan.push_back({in_grid, TransposeType::Default, "1D: only default slab transpose"});
-//         return plan;
-//     }
-
-//     // Start from the input grid
-//     std::vector<int> cur_grid = in_grid;
-
-//     // Step 1: If not a permutation, first do slab (default) to grid with a contiguous dimension
-//     if(!is_permutation(in_grid, out_grid))
-//     {
-//         // Make a slab: shape has all but one dim == 1, the rest is product
-//         std::vector<int> slab_grid(ndim, 1);
-//         int max_dim = std::distance(in_grid.begin(), std::max_element(in_grid.begin(), in_grid.end()));
-//         slab_grid[max_dim] = std::accumulate(in_grid.begin(), in_grid.end(), 1, std::multiplies<int>());
-//         plan.push_back({slab_grid, TransposeType::Default, "Initial slab decomposition"});
-//         cur_grid = slab_grid;
-//     }
-
-//     // Step 2: Now, step through permutations via pencils if necessary
-//     while(cur_grid != out_grid)
-//     {
-//         // Find the next target grid in the permutation path
-//         // In 2D, only one pencil is needed if not a slab, in 3D possibly two
-//         // Find the next permutation by swapping two axes
-//         std::vector<int> next_grid = cur_grid;
-
-//         // For each dimension, if current dim doesn't match output, swap it with the correct one
-//         for(int i=0; i<ndim; ++i)
-//         {
-//             if(next_grid[i] != out_grid[i])
-//             {
-//                 // Find where out_grid[i] currently is, swap
-//                 auto it = std::find(next_grid.begin(), next_grid.end(), out_grid[i]);
-//                 if(it != next_grid.end())
-//                 {
-//                     int j = std::distance(next_grid.begin(), it);
-//                     std::swap(next_grid[i], next_grid[j]);
-//                     plan.push_back({next_grid, TransposeType::Pencil, "Pencil permutation step"});
-//                     break;
-//                 }
-//             }
-//         }
-//         cur_grid = next_grid;
-//     }
-
-//     // Step 3: If cur_grid still not equal out_grid, do a final default (slab) transpose
-//     if(cur_grid != out_grid)
-//         plan.push_back({out_grid, TransposeType::Default, "Final slab transpose"});
-
-//     return plan;
-// }
-
-void print_plan(const std::vector<TransposeStep>& plan)
+// Pretty print
+void print_plan(const std::vector<std::array<int,3>>& plan)
 {
-    for(size_t i=0; i<plan.size(); ++i)
-    {
-        std::cout << "@@@@tep " << i << "from grid : ";
-        for(int x : plan[i].from_grid) std::cout << x << " ";
-        std::cout << " to grid : "; 
-        for(int x : plan[i].to_grid) std::cout << x << " ";
-        std::cout << ", type: "; 
-        if(plan[i].type == TransposeType::Slab) std::cout << "Slab";
-        else std::cout << "Pencil";
-        std::cout <<  std::endl;
-    }
+    for(const auto& g : plan)
+        std::cout << "@@@transpose_plan new {" << g[0] << "," << g[1] << "," << g[2] << "} ";
+    std::cout << std::endl;
 }
-
-
-
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
@@ -3065,22 +2917,9 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
 
     // 3D example
-    // std::array<int, 3> in_grid3d{2,2,2}, out_grid3d{2,2,2};
-    std::array<int, 3> in_grid3d{2,2,1}, out_grid3d{1,2,2};
-    auto plan3d = plan_transpose_sequence(in_grid3d, out_grid3d);
-    print_plan(plan3d);
-    std::cout << "@@size of plan3d is " << plan3d.size() << std::endl;
-
-    // 2D example
-    // std::vector<int> in_grid2d{2,2}, out_grid2d{1,4};
-    // auto plan2d = plan_transpose_sequence(in_grid2d, out_grid2d);
-    // print_plan(plan2d);
-
-    // // 1D example
-    // std::vector<int> in_grid1d{8}, out_grid1d{8};
-    // auto plan1d = plan_transpose_sequence(in_grid1d, out_grid1d);
-    // print_plan(plan1d);
-
+    std::array<int,3> g3{2,2,2}, g4{2,2,2};
+    auto plan2 = get_transpose_plan(g3, g4);
+    print_plan(plan2); 
 
     auto is_permutation = [](const std::array<int, 3>& a, const std::array<int, 3>& b) {
         std::array<int, 3> x = a, y = b;
