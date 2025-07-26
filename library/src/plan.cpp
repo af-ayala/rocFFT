@@ -3065,7 +3065,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
 
     // 3D example
-    std::array<int, 3> in_grid3d{2,2,1}, out_grid3d{1,2,2};
+    std::array<int, 3> in_grid3d{2,2,2}, out_grid3d{2,2,2};
     auto plan3d = plan_transpose_sequence(in_grid3d, out_grid3d);
     print_plan(plan3d);
 
