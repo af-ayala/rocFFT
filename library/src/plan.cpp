@@ -2812,11 +2812,6 @@ std::vector<TransposeStep> plan_transpose_sequence(
     // Start from the input grid
     std::vector<int> cur_grid = in_grid;
 
-    // Helper lambdas:
-    auto grid_has_contiguous = [](const std::vector<int>& grid) {
-        return std::count(grid.begin(), grid.end(), 1) == (grid.size() - 1);
-    };
-
     // Step 1: If not a permutation, first do slab (default) to grid with a contiguous dimension
     if(!is_permutation(in_grid, out_grid))
     {
@@ -2970,7 +2965,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     std::vector<int> in_grid1d{8}, out_grid1d{8};
     auto plan1d = plan_transpose_sequence(in_grid1d, out_grid1d);
     print_plan(plan1d);
-    
+
 
     auto is_permutation = [](const std::array<int, 3>& a, const std::array<int, 3>& b) {
         std::array<int, 3> x = a, y = b;
