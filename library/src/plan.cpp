@@ -2766,6 +2766,118 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
     return out;
 }
 
+enum class TransposeType { Default, Pencil };
+
+struct TransposeStep
+{
+    std::vector<int> grid; // The logical processor grid after this step
+    TransposeType type;
+    std::string description;
+};
+
+// checks if two grids are permutations of each other
+bool is_permutation(const std::vector<int>& a, const std::vector<int>& b)
+{
+    std::vector<int> aa = a, bb = b;
+    std::sort(aa.begin(), aa.end());
+    std::sort(bb.begin(), bb.end());
+    return aa == bb;
+}
+
+// check axis contiguity from processor grid
+inline std::vector<int> contiguous_axes(const std::array<int,3>& grid)
+{
+    std::vector<int> axes;
+    for(int d=0; d<3; ++d)
+        if(grid[d]==1)
+            axes.push_back(d);
+    return axes;
+}
+
+std::vector<TransposeStep> plan_transpose_sequence(
+    const std::vector<int>& in_grid,
+    const std::vector<int>& out_grid)
+{
+    assert(in_grid.size() == out_grid.size());
+    const int ndim = in_grid.size();
+    std::vector<TransposeStep> plan;
+
+    // 1D: trivial, always just "Default"
+    if(ndim == 1)
+    {
+        plan.push_back({in_grid, TransposeType::Default, "1D: only default slab transpose"});
+        return plan;
+    }
+
+    // Start from the input grid
+    std::vector<int> cur_grid = in_grid;
+
+    // Helper lambdas:
+    auto grid_has_contiguous = [](const std::vector<int>& grid) {
+        return std::count(grid.begin(), grid.end(), 1) == (grid.size() - 1);
+    };
+
+    // Step 1: If not a permutation, first do slab (default) to grid with a contiguous dimension
+    if(!is_permutation(in_grid, out_grid))
+    {
+        // Make a slab: shape has all but one dim == 1, the rest is product
+        std::vector<int> slab_grid(ndim, 1);
+        int max_dim = std::distance(in_grid.begin(), std::max_element(in_grid.begin(), in_grid.end()));
+        slab_grid[max_dim] = std::accumulate(in_grid.begin(), in_grid.end(), 1, std::multiplies<int>());
+        plan.push_back({slab_grid, TransposeType::Default, "Initial slab decomposition"});
+        cur_grid = slab_grid;
+    }
+
+    // Step 2: Now, step through permutations via pencils if necessary
+    while(cur_grid != out_grid)
+    {
+        // Find the next target grid in the permutation path
+        // In 2D, only one pencil is needed if not a slab, in 3D possibly two
+        // Find the next permutation by swapping two axes
+        std::vector<int> next_grid = cur_grid;
+
+        // For each dimension, if current dim doesn't match output, swap it with the correct one
+        for(int i=0; i<ndim; ++i)
+        {
+            if(next_grid[i] != out_grid[i])
+            {
+                // Find where out_grid[i] currently is, swap
+                auto it = std::find(next_grid.begin(), next_grid.end(), out_grid[i]);
+                if(it != next_grid.end())
+                {
+                    int j = std::distance(next_grid.begin(), it);
+                    std::swap(next_grid[i], next_grid[j]);
+                    plan.push_back({next_grid, TransposeType::Pencil, "Pencil permutation step"});
+                    break;
+                }
+            }
+        }
+        cur_grid = next_grid;
+    }
+
+    // Step 3: If cur_grid still not equal out_grid, do a final default (slab) transpose
+    if(cur_grid != out_grid)
+        plan.push_back({out_grid, TransposeType::Default, "Final slab transpose"});
+
+    return plan;
+}
+
+void print_plan(const std::vector<TransposeStep>& plan)
+{
+    for(size_t i=0; i<plan.size(); ++i)
+    {
+        std::cout << "Step " << i << ": ";
+        for(int x : plan[i].grid) std::cout << x << " ";
+        std::cout << " -- ";
+        if(plan[i].type == TransposeType::Default) std::cout << "Default";
+        else std::cout << "Pencil";
+        std::cout << " -- " << plan[i].description << std::endl;
+    }
+}
+
+
+
+
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
     const auto local_comm_rank = get_local_comm_rank();
@@ -2842,6 +2954,23 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
               << in_grid[2] << std::endl;
     std::cout << "--descoutgrid desc.outFields[0]: " << out_grid[0] << " " << out_grid[1] << " "
               << out_grid[2] << std::endl;
+
+
+    // 3D example
+    std::vector<int> in_grid3d{2,2,1}, out_grid3d{1,2,2};
+    auto plan3d = plan_transpose_sequence(in_grid3d, out_grid3d);
+    print_plan(plan3d);
+
+    // 2D example
+    std::vector<int> in_grid2d{2,2}, out_grid2d{1,4};
+    auto plan2d = plan_transpose_sequence(in_grid2d, out_grid2d);
+    print_plan(plan2d);
+
+    // 1D example
+    std::vector<int> in_grid1d{8}, out_grid1d{8};
+    auto plan1d = plan_transpose_sequence(in_grid1d, out_grid1d);
+    print_plan(plan1d);
+    
 
     auto is_permutation = [](const std::array<int, 3>& a, const std::array<int, 3>& b) {
         std::array<int, 3> x = a, y = b;
