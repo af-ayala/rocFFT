@@ -2302,8 +2302,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
     }
 
     std::array<int, 3> in_grid  = {1, 1, 1};
-    std::array<int, 3> out_grid = {1, 1, 1};        
-
+    std::array<int, 3> out_grid = {1, 1, 1};
 
     if(!inField.bricks.empty())
         in_grid = infer_grid_from_bricks(inField.bricks);
@@ -2311,11 +2310,10 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
     if(!outField.bricks.empty())
         out_grid = infer_grid_from_bricks(outField.bricks);
 
-
     std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2]
               << std::endl;
     std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2]
-              << std::endl;    
+              << std::endl;
 
     // Check uniformity *within the subcomm* for alltoall
     bool uniform_counts = std::all_of(send_counts.begin(),
@@ -2327,11 +2325,12 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
 
     size_t uniform_count_inside_subcomm = 0;
     if(uniform_counts)
-        uniform_count_inside_subcomm = send_counts[0];  // Use for MPI_Ialltoall
+        uniform_count_inside_subcomm = send_counts[0]; // Use for MPI_Ialltoall
     else
-        throw std::runtime_error("Non-uniform send_counts in pencil subcomm!");                             
+        throw std::runtime_error("Non-uniform send_counts in pencil subcomm!");
 
-    std::cout << " the sending uniform_count_inside_subcomm is = " << uniform_count_inside_subcomm << std::endl;
+    std::cout << " the sending uniform_count_inside_subcomm is = " << uniform_count_inside_subcomm
+              << std::endl;
 
     std::cout << "subcomm inField bricks:" << std::endl;
     for(const auto& b : inField.bricks)
@@ -2359,9 +2358,9 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
         std::cout << "  rank: " << b.location.comm_rank;
         std::cout << "  dev: " << b.location.device;
         std::cout << std::endl;
-    }                             
+    }
 
-    // Print diagnostics 
+    // Print diagnostics
     std::cout << "[Rank " << my_global_rank << "] (subcomm) uniform_counts: " << uniform_counts
               << std::endl;
     std::cout << "[Rank " << my_global_rank << "] (subcomm) send_counts: ";
@@ -2385,7 +2384,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                                        uniform_counts,
                                                        std::move(subcomm));
 
-    alltoall_ptr->set_uniform_count_inside_subcomm(uniform_count_inside_subcomm);    
+    alltoall_ptr->set_uniform_count_inside_subcomm(uniform_count_inside_subcomm);
 
     auto alltoall_op                    = AddMultiPlanItem(std::move(alltoall_ptr), pack_ops);
     multiPlan[alltoall_op]->group       = itemGroup;
@@ -2568,7 +2567,7 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
 
     // check if uniform exchange to use MPI_Alltoall
     bool uniform_counts = false;
-    uniform_counts = std::all_of(send_counts.begin(),
+    uniform_counts      = std::all_of(send_counts.begin(),
                                  send_counts.end(),
                                  [&](size_t c) { return c == send_counts[0]; })
                      && std::all_of(recv_counts.begin(), recv_counts.end(), [&](size_t c) {
@@ -2862,8 +2861,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     if(can_pencil_alltoall)
     {
-        int my_global_rank = -1;
-        int nprocs         = -1;
+        int my_global_rank, nprocs;
         MPI_Comm_rank(desc.mpi_comm, &my_global_rank);
         MPI_Comm_size(desc.mpi_comm, &nprocs);
 
@@ -2884,15 +2882,16 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             std::cout << r << " ";
         std::cout << std::endl;
 
-        std::vector<int> pencilize_axes = {1, 2};
-        // for(int axis = 0; axis < 3; ++axis)
-        // {
-        //     // if FFT not yet done, and axis is SPLIT at output, pencilize;
-        //     // otherwise, the FFT in [axis] dimension will be performed as the final step
-        //     if(!fft_done[axis]
-        //        && DimensionSplitInField(lengths[axis], axis, desc.outFields.front()))
-        //         pencilize_axes.push_back(axis);
-        // }
+        // std::vector<int> pencilize_axes = {1, 2};
+        std::vector<int> pencilize_axes;
+        for(int axis = 0; axis < 3; ++axis)
+        {
+            // if FFT not yet done, and axis is SPLIT at output, pencilize;
+            // otherwise, the FFT in [axis] dimension will be performed as the final step
+            if(!fft_done[axis]
+               && DimensionSplitInField(lengths[axis], axis, desc.outFields.front()))
+                pencilize_axes.push_back(axis);
+        }
 
         for(size_t step = 0; step < pencilize_axes.size(); ++step)
         {
@@ -3018,23 +3017,26 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             }
 
             // once data is transposed, perform intermediate FFT
-            std::vector<size_t> fftItems;
-            C2CField(currentField,
-                     {static_cast<size_t>(pencil_axis)},
-                     currentBufs,
-                     currentBufs,
-                     currentAntecedents,
-                     fftItems);
-            fft_done[pencil_axis] = 1;
-            currentAntecedents    = fftItems;
+            if(!fft_done[pencil_axis])
+            {
+                std::vector<size_t> fftItems;
+                C2CField(currentField,
+                         {static_cast<size_t>(pencil_axis)},
+                         currentBufs,
+                         currentBufs,
+                         currentAntecedents,
+                         fftItems);
+                fft_done[pencil_axis] = 1;
+                currentAntecedents    = fftItems;
+            }
         }
 
         // transpose to output shape (if needed)
         bool need_final_transpose = !(currentField.bricks == desc.outFields.front().bricks);
         std::vector<BufferPtr> outputBufs
             = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
-    
-            if(need_final_transpose)
+
+        if(need_final_transpose)
         {
             std::vector<size_t> finalTransposeItems;
             MPI_Barrier(desc.mpi_comm);
@@ -3079,10 +3081,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         std::cout << "[Rank " << my_global_rank
                   << "] Leaving BuildOptMultiDevicePlan, currentField.bricks.size = "
                   << currentField.bricks.size() << std::endl;
-
-#if USE_FILE_LOG
-        dbg.close();
-#endif
     }
 
     else
