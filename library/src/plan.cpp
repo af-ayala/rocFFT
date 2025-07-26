@@ -2301,6 +2301,22 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
         }
     }
 
+    std::array<int, 3> in_grid  = {1, 1, 1};
+    std::array<int, 3> out_grid = {1, 1, 1};        
+
+
+    if(!inField.bricks.empty())
+        in_grid = infer_grid_from_bricks(inField.bricks);
+
+    if(!outField.bricks.empty())
+        out_grid = infer_grid_from_bricks(outField.bricks);
+
+
+    std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2]
+              << std::endl;
+    std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2]
+              << std::endl;    
+
     // Check uniformity *within the subcomm* for alltoall
     bool uniform_counts = std::all_of(send_counts.begin(),
                                       send_counts.end(),
@@ -2868,15 +2884,15 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             std::cout << r << " ";
         std::cout << std::endl;
 
-        std::vector<int> pencilize_axes;
-        for(int axis = 0; axis < 3; ++axis)
-        {
-            // if FFT not yet done, and axis is SPLIT at output, pencilize;
-            // otherwise, the FFT in [axis] dimension will be performed as the final step
-            if(!fft_done[axis]
-               && DimensionSplitInField(lengths[axis], axis, desc.outFields.front()))
-                pencilize_axes.push_back(axis);
-        }
+        std::vector<int> pencilize_axes = {1, 2};
+        // for(int axis = 0; axis < 3; ++axis)
+        // {
+        //     // if FFT not yet done, and axis is SPLIT at output, pencilize;
+        //     // otherwise, the FFT in [axis] dimension will be performed as the final step
+        //     if(!fft_done[axis]
+        //        && DimensionSplitInField(lengths[axis], axis, desc.outFields.front()))
+        //         pencilize_axes.push_back(axis);
+        // }
 
         for(size_t step = 0; step < pencilize_axes.size(); ++step)
         {
@@ -3017,9 +3033,10 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         bool need_final_transpose = !(currentField.bricks == desc.outFields.front().bricks);
         std::vector<BufferPtr> outputBufs
             = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
-        std::vector<size_t> finalTransposeItems;
-        if(need_final_transpose)
+    
+            if(need_final_transpose)
         {
+            std::vector<size_t> finalTransposeItems;
             MPI_Barrier(desc.mpi_comm);
             std::cout << "[Rank " << my_global_rank << "] Doing final transpose to user output grid"
                       << std::endl;
