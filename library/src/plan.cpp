@@ -2904,7 +2904,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // 3D example
     std::array<int,3> g3{2,2,2}, g4{2,2,2};
     auto plan2 = get_transpose_plan(g3, g4);
-    print_plan(plan2); 
 
     for(const auto& g : plan2)
         std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
