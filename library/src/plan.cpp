@@ -2860,14 +2860,12 @@ std::vector<TransposeStep> plan_transpose_sequence(const std::array<int,3>& inpu
     }
     // Not a permutation: do a slab to get a pencil first
     std::array<int,3> pencil_grid = current;
-    int slab_axis = -1;
     for(int d=0; d<3; ++d)
     {
         if(current[d] != 1)
         {
             pencil_grid = current;
             pencil_grid[d] = 1;
-            slab_axis = d;
             break;
         }
     }
@@ -3067,7 +3065,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
 
     // 3D example
-    std::vector<int> in_grid3d{2,2,1}, out_grid3d{1,2,2};
+    std::array<int, 3> in_grid3d{2,2,1}, out_grid3d{1,2,2};
     auto plan3d = plan_transpose_sequence(in_grid3d, out_grid3d);
     print_plan(plan3d);
 
