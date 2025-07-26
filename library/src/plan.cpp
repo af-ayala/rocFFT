@@ -3036,6 +3036,15 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         std::vector<BufferPtr> outputBufs
             = GatherUserBuffers(BufferPtr::user_output, desc.outFields.front().bricks);
 
+        std::array<int, 3> last_grid1 = infer_grid_from_bricks(currentField.bricks);
+        std::cout << "_Final__  currentField grid: " << last_grid1[0] << " " << last_grid1[1] << " "
+                    << last_grid1[2] << std::endl;
+
+        std::array<int, 3> last_grid2 = infer_grid_from_bricks(desc.outFields.front().bricks);
+        std::cout << "_Final__  outfield grid: " << last_grid2[0] << " " << last_grid2[1] << " "
+                    << last_grid2[2] << std::endl;
+
+
         if(need_final_transpose)
         {
             std::vector<size_t> finalTransposeItems;
