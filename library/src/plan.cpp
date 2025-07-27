@@ -2998,7 +2998,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     {
         std::cout << "performing pencil_to_pencil " << std::endl;
         // perform global transposes and compute local FFTs
-        for(int i = 0; i < transpose_sequence.size(); ++i)
+        for(size_t i = 0; i < transpose_sequence.size(); ++i)
         {
             // get next grid, note that transpose_sequence size is one less than grids_sequence
             std::array<int, 3> grid = grids_sequence[i + 1];
@@ -3031,10 +3031,10 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                     currentField, lengthsWithBatch, split_axes, split_sizes);
 
             if(i == transpose_sequence.size() - 1)
-                std::cout << "transpose is needed " << " {" << grid[0] << "," << grid[1] << ","
+                std::cout << "transpose is NOT needed " << " {" << grid[0] << "," << grid[1] << ","
                           << grid[2] << "} \n";
             else
-                std::cout << "transpose is NOT needed " << " {" << grid[0] << "," << grid[1] << ","
+                std::cout << "transpose is needed " << " {" << grid[0] << "," << grid[1] << ","
                           << grid[2] << "} \n";
 
             std::cout << "___*___ nextField bricks:" << std::endl;
