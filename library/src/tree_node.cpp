@@ -911,52 +911,67 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 rocfft_execution_info info,
                                 size_t                multiPlanIdx)
 {
+    // check that we have as many elems in our count/offset buffers as
+    // we have ranks
+    const size_t num_ranks = plan->get_local_comm_size();
+    if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
+       || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
+        throw std::runtime_error(
+            "CommAllToAll: number of counts/offsets does not match number of ranks");
+
+    if(LOG_PLAN_ENABLED())
+    {
+        log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
+    }
 
     std::cout << "ExecuteAsync called " << alan_kia << " times.\n";
     alan_kia++; // Increment the global counter
 
-    // Choose communicator and comm size for THIS op
-    MPI_Comm_wrapper_t transpose_comm = subcomm ? subcomm : plan->desc.mpi_comm;
-
-    int global_rank = -1, global_size = -1;
+    int global_rank = -1;
     MPI_Comm_rank(plan->desc.mpi_comm, &global_rank);
-    MPI_Comm_size(plan->desc.mpi_comm, &global_size);
 
-    int comm_rank = -1, comm_size = -1;
-    MPI_Comm_rank(transpose_comm, &comm_rank);
-    MPI_Comm_size(transpose_comm, &comm_size);
-
-    const auto elem_size = element_size(precision, arrayType);
+    const auto  elem_size = element_size(precision, arrayType);
     MPI_Request request;
 
     if(subcomm)
     {
-        // **Pencil subcomm case** (use only if uniform counts in subcomm)
-        std::cout << "[Rank " << global_rank << "] Subcomm ExecuteAsync: subcomm_size="
-                  << comm_size << " comm_rank=" << comm_rank
-                  << " uniform=" << uniform_counts << " uniform_count_inside_subcomm="
-                  << uniform_count_inside_subcomm << std::endl;
+        if(LOG_PLAN_ENABLED())
+            log_plan("Using MPI_Ialltoall\n");
+
+        std::cout << "if as subcomm " << std::endl;
+        int comm_rank = -1, comm_size = -1;
+        MPI_Comm_rank(subcomm, &comm_rank);
+        MPI_Comm_size(subcomm, &comm_size);
+
+        // optimization with pencil sub-communicators
+        std::cout << "[Rank " << global_rank << "] Subcomm ExecuteAsync: subcomm_size=" << comm_size
+                  << " comm_rank=" << comm_rank << " uniform=" << uniform_counts
+                  << " uniform_count_inside_subcomm=" << uniform_count_inside_subcomm << std::endl;
 
         if(!uniform_counts)
-            throw std::runtime_error("CommAllToAll::ExecuteAsync: non-uniform counts in pencil subcomm!");
+            throw std::runtime_error(
+                "CommAllToAll::ExecuteAsync: non-uniform counts in pencil subcomm!");
 
         // In subcomm: sendCounts, recvCounts, etc are sized for comm_size, indexed by comm_rank
         const int send_count_bytes = static_cast<int>(uniform_count_inside_subcomm * elem_size);
 
         int ret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, comm_rank),
-                                send_count_bytes, MPI_CHAR,
+                                send_count_bytes,
+                                MPI_CHAR,
                                 recvBuf.get(in_buffer, out_buffer, comm_rank),
-                                send_count_bytes, MPI_CHAR,
-                                transpose_comm, &request);
+                                send_count_bytes,
+                                MPI_CHAR,
+                                subcomm,
+                                &request);
 
         if(ret != MPI_SUCCESS)
         {
             char errmsg[MPI_MAX_ERROR_STRING];
-            int errlen = 0;
+            int  errlen = 0;
             MPI_Error_string(ret, errmsg, &errlen);
-            comm_status = COMM_MPI_ERROR;
-            error_message = "MPI_Ialltoall (subcomm) failed on global rank " +
-                            std::to_string(global_rank) + ": " + std::string(errmsg);
+            comm_status   = COMM_MPI_ERROR;
+            error_message = "MPI_Ialltoall (subcomm) failed on global rank "
+                            + std::to_string(global_rank) + ": " + std::string(errmsg);
             return;
         }
     }
@@ -965,7 +980,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");
 
-        std::cout << "else as uniform_counts " << std::endl;
+        std::cout << "else as uniform MPI_Ialltoall " << std::endl;
 
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
@@ -1043,7 +1058,6 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
     comm_requests.push_back(request);
 }
-
 
 void CommAllToAll::Wait()
 {
