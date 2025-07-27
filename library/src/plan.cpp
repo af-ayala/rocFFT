@@ -2950,7 +2950,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     for(const auto& type : transpose_sequence)
     {
-        std::cout << "@@transpose_sequence [" << local_comm_rank << "]" << type[0] << std::endl;
+        std::cout << "@@transpose_sequence [" << local_comm_rank << "]" << type << std::endl;
     }    
 
     auto lengthsWithBatch = lengths;
