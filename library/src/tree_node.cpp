@@ -962,6 +962,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     }
     else if(uniform_counts)
     {
+        std::cout << "else as uniform_counts " << std::endl;
         // **Global uniform (slab) case**
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
@@ -984,6 +985,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     }
     else
     {
+        std::cout << "else as altoallv " << std::endl;
         // **Global non-uniform case (slab, general)**
         std::vector<int> intSendOffsets, intSendCounts, intRecvOffsets, intRecvCounts;
         auto convertToInt = [](const std::vector<size_t>& src, std::vector<int>& dest)
