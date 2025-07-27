@@ -2972,16 +2972,19 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     {
         get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
-        for(const auto& grid : grids_sequence)
+        if(local_comm_rank == 0)
         {
-            std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
-                      << grid[1] << "," << grid[2] << "} \n";
-        }
+            for(const auto& grid : grids_sequence)
+            {
+                std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
+                          << grid[1] << "," << grid[2] << "} \n";
+            }
 
-        for(const auto& type : transpose_sequence)
-        {
-            std::cout << "@@transpose_sequence [" << local_comm_rank << "] "
-                      << transpose_type_str(type) << std::endl;
+            for(const auto& type : transpose_sequence)
+            {
+                std::cout << "@@transpose_sequence [" << local_comm_rank << "] "
+                          << transpose_type_str(type) << std::endl;
+            }
         }
 
         pencil_to_pencil
@@ -2996,7 +2999,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // optimized pencil-to-pencil transform using sub-communicators
     if(pencil_to_pencil)
     {
-        std::cout << "performing pencil_to_pencil " << std::endl;
+        if(local_comm_rank == 0)
+            std::cout << "performing pencil_to_pencil " << std::endl;
         // perform global transposes and compute local FFTs
         for(size_t i = 0; i < transpose_sequence.size(); ++i)
         {
@@ -3030,29 +3034,25 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 nextField = MakeFieldWithPencilSplit(
                     currentField, lengthsWithBatch, split_axes, split_sizes);
 
-            if(i == transpose_sequence.size() - 1)
-                std::cout << "transpose is NOT needed " << " {" << grid[0] << "," << grid[1] << ","
-                          << grid[2] << "} \n";
-            else
-                std::cout << "transpose is needed " << " {" << grid[0] << "," << grid[1] << ","
-                          << grid[2] << "} \n";
-
-            std::cout << "___*___ nextField bricks:" << std::endl;
-            for(const auto& b : nextField.bricks)
+            if(local_comm_rank == 0)
             {
-                std::cout << "  lower: ";
-                for(auto v : b.lower)
-                    std::cout << v << " ";
-                std::cout << "  upper: ";
-                for(auto v : b.upper)
-                    std::cout << v << " ";
-                std::cout << "  rank: " << b.location.comm_rank;
-                std::cout << "  dev: " << b.location.device;
-                std::cout << std::endl;
+                std::cout << "___*___ nextField bricks:" << std::endl;
+                for(const auto& b : nextField.bricks)
+                {
+                    std::cout << "  lower: ";
+                    for(auto v : b.lower)
+                        std::cout << v << " ";
+                    std::cout << "  upper: ";
+                    for(auto v : b.upper)
+                        std::cout << v << " ";
+                    std::cout << "  rank: " << b.location.comm_rank;
+                    std::cout << "  dev: " << b.location.device;
+                    std::cout << std::endl;
+                }
+                std::array<int, 3> nf_grid = infer_grid_from_bricks(nextField.bricks);
+                std::cout << "___*___  nextField grid: " << nf_grid[0] << " " << nf_grid[1] << " "
+                          << nf_grid[2] << std::endl;
             }
-            std::array<int, 3> nf_grid = infer_grid_from_bricks(nextField.bricks);
-            std::cout << "___*___  nextField grid: " << nf_grid[0] << " " << nf_grid[1] << " "
-                      << nf_grid[2] << std::endl;
 
             // once data is transposed, perform intermediate FFT
             if(!fft_done[pencil_axis])
