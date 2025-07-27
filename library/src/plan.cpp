@@ -2996,11 +2996,13 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // optimized pencil-to-pencil transform using sub-communicators
     if(pencil_to_pencil)
     {
-
         std::cout << "performing pencil_to_pencil " << std::endl;
         // perform global transposes and compute local FFTs
-        for(const auto& grid : grids_sequence)
+        for(int i = 0; i < transpose_sequence.size(); ++i)
         {
+            // get next grid, note that transpose_sequence size is one less than grids_sequence
+            grid = grids_sequence[i + 1];
+
             // find pencil_axis (where grid==1), and split axes (where grid > 1)
             int              pencil_axis;
             std::vector<int> split_axes;
@@ -3021,8 +3023,19 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             std::vector<BufferPtr> currentBufs        = inputFFTBufs;
             std::vector<size_t>    currentAntecedents = inputFFTItems;
 
-            rocfft_field_t nextField
-                = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, split_axes, split_sizes);
+            rocfft_field_t nextField;
+            if(i == transpose_sequence.size() - 1)
+                nextField = desc.outFields.front();
+            else
+                nextField = MakeFieldWithPencilSplit(
+                    currentField, lengthsWithBatch, split_axes, split_sizes);
+
+            if(i == transpose_sequence.size() - 1)
+                std::cout << "transpose is needed " << " {" << grid[0] << "," << grid[1] << ","
+                          << grid[2] << "} \n";
+            else
+                std::cout << "transpose is NOT needed " << " {" << grid[0] << "," << grid[1] << ","
+                          << grid[2] << "} \n";
 
             std::cout << "___*___ nextField bricks:" << std::endl;
             for(const auto& b : nextField.bricks)
