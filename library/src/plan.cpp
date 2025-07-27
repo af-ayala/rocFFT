@@ -3001,7 +3001,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         for(int i = 0; i < transpose_sequence.size(); ++i)
         {
             // get next grid, note that transpose_sequence size is one less than grids_sequence
-            grid = grids_sequence[i + 1];
+            std::array<int, 3> grid = grids_sequence[i + 1];
 
             // find pencil_axis (where grid==1), and split axes (where grid > 1)
             int              pencil_axis;
