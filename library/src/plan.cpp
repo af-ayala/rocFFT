@@ -2805,6 +2805,22 @@ inline transpose_type get_transpose_type(const std::array<int, 3>& from,
     throw std::runtime_error("Unknown transpose kind!");
 }
 
+inline const char* transpose_type_str(transpose_type t)
+{
+    switch(t) {
+        case transpose_type::pencil_to_pencil: return "pencil_to_pencil";
+        case transpose_type::pencil_to_slab:   return "pencil_to_slab";
+        case transpose_type::pencil_to_brick:  return "pencil_to_brick";
+        case transpose_type::slab_to_pencil:   return "slab_to_pencil";
+        case transpose_type::slab_to_slab:     return "slab_to_slab";
+        case transpose_type::slab_to_brick:    return "slab_to_brick";
+        case transpose_type::brick_to_pencil:  return "brick_to_pencil";
+        case transpose_type::brick_to_slab:    return "brick_to_slab";
+        case transpose_type::brick_to_brick:   return "brick_to_brick";
+        default: return "?";
+    }
+}
+
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
                         const std::array<int, 3>&        output_grid,
                         std::vector<std::array<int, 3>>& plan,
@@ -2950,8 +2966,9 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     for(const auto& type : transpose_sequence)
     {
-        std::cout << "@@transpose_sequence [" << local_comm_rank << "]" << type << std::endl;
-    }    
+        std::cout << "@@transpose_sequence [" << local_comm_rank << "] "
+                << transpose_type_str(type) << std::endl;
+    }
 
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
