@@ -2807,17 +2807,28 @@ inline transpose_type get_transpose_type(const std::array<int, 3>& from,
 
 inline const char* transpose_type_str(transpose_type t)
 {
-    switch(t) {
-        case transpose_type::pencil_to_pencil: return "pencil_to_pencil";
-        case transpose_type::pencil_to_slab:   return "pencil_to_slab";
-        case transpose_type::pencil_to_brick:  return "pencil_to_brick";
-        case transpose_type::slab_to_pencil:   return "slab_to_pencil";
-        case transpose_type::slab_to_slab:     return "slab_to_slab";
-        case transpose_type::slab_to_brick:    return "slab_to_brick";
-        case transpose_type::brick_to_pencil:  return "brick_to_pencil";
-        case transpose_type::brick_to_slab:    return "brick_to_slab";
-        case transpose_type::brick_to_brick:   return "brick_to_brick";
-        default: return "?";
+    switch(t)
+    {
+    case transpose_type::pencil_to_pencil:
+        return "pencil_to_pencil";
+    case transpose_type::pencil_to_slab:
+        return "pencil_to_slab";
+    case transpose_type::pencil_to_brick:
+        return "pencil_to_brick";
+    case transpose_type::slab_to_pencil:
+        return "slab_to_pencil";
+    case transpose_type::slab_to_slab:
+        return "slab_to_slab";
+    case transpose_type::slab_to_brick:
+        return "slab_to_brick";
+    case transpose_type::brick_to_pencil:
+        return "brick_to_pencil";
+    case transpose_type::brick_to_slab:
+        return "brick_to_slab";
+    case transpose_type::brick_to_brick:
+        return "brick_to_brick";
+    default:
+        return "?";
     }
 }
 
@@ -2953,32 +2964,37 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     // get transpose grids sequence for pencil and brick decompositions, from input to output
     std::vector<std::array<int, 3>> grids_sequence;
-    std::vector<transpose_type> transpose_sequence;
-    
+    std::vector<transpose_type>     transpose_sequence;
+
+    bool pencil_to_pencil = false;
     // plan transposition steps
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2)
     {
-        // get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
-        get_transpose_plan({4,4,8}, {8,4,4}, grids_sequence, transpose_sequence);
+        get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
         for(const auto& grid : grids_sequence)
         {
             std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
-                        << grid[1] << "," << grid[2] << "} \n";
+                      << grid[1] << "," << grid[2] << "} \n";
         }
 
         for(const auto& type : transpose_sequence)
         {
             std::cout << "@@transpose_sequence [" << local_comm_rank << "] "
-                    << transpose_type_str(type) << std::endl;
+                      << transpose_type_str(type) << std::endl;
         }
+
+        pencil_to_pencil
+            = std::all_of(transpose_sequence.begin(),
+                          transpose_sequence.end(),
+                          [](transpose_type t) { return t == transpose_type::pencil_to_pencil; });
     }
 
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
     // optimized pencil-to-pencil transform using sub-communicators
-    if(num_split_dims_in >= 2 && num_split_dims_out >= 2)
+    if(pencil_to_pencil)
     {
 
         // perform global transposes and compute local FFTs
