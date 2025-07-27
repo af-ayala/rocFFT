@@ -2956,18 +2956,22 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     std::vector<transpose_type> transpose_sequence;
     
     // plan transposition steps
-    get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
-
-    for(const auto& grid : grids_sequence)
+    if(num_split_dims_in >= 2 && num_split_dims_out >= 2)
     {
-        std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
-                    << grid[1] << "," << grid[2] << "} \n";
-    }
+        // get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
+        get_transpose_plan({4,4,8}, {8,4,4}, grids_sequence, transpose_sequence);
 
-    for(const auto& type : transpose_sequence)
-    {
-        std::cout << "@@transpose_sequence [" << local_comm_rank << "] "
-                << transpose_type_str(type) << std::endl;
+        for(const auto& grid : grids_sequence)
+        {
+            std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
+                        << grid[1] << "," << grid[2] << "} \n";
+        }
+
+        for(const auto& type : transpose_sequence)
+        {
+            std::cout << "@@transpose_sequence [" << local_comm_rank << "] "
+                    << transpose_type_str(type) << std::endl;
+        }
     }
 
     auto lengthsWithBatch = lengths;
