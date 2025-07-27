@@ -2910,38 +2910,14 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     std::array<int, 3> in_grid  = infer_grid_from_bricks(desc.inFields[0].bricks);
     std::array<int, 3> out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
 
-    std::cout << "--descingrid desc.inFields[0]: " << in_grid[0] << " " << in_grid[1] << " "
-              << in_grid[2] << std::endl;
-    std::cout << "--descoutgrid desc.outFields[0]: " << out_grid[0] << " " << out_grid[1] << " "
-              << out_grid[2] << std::endl;
+    // plan transposition
+    // auto plan_transpose = get_transpose_plan(in_grid, out_grid); // Expected: {2,2,1} {2,1,2} {1,2,2}
 
-
-    // 3D example
-    // std::array<int,3> g3{2,2,2}, g4{2,2,2};
-    // auto plan_transpose = get_transpose_plan(g3, g4); // Expected: {2,2,2} {1,2,4} {2,1,4} {4,2,1} {2,2,2}
-
-    std::array<int,3> g1{2,2,1}, g2{1,2,2};
-    auto plan_transpose = get_transpose_plan(g1, g2); // Expected: {2,2,1} {2,1,2} {1,2,2}
+    std::array<int,3> g5{4,8,4}, g6{8,4,8};
+    auto plan_transpose = get_transpose_plan(g5, g6);    
 
     for(const auto& g : plan_transpose)
         std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
-
-
-    auto is_permutation = [](const std::array<int, 3>& a, const std::array<int, 3>& b) {
-        std::array<int, 3> x = a, y = b;
-        std::sort(x.begin(), x.end());
-        std::sort(y.begin(), y.end());
-        return x == y;
-    };
-
-    // count number of split dims in input and output grids
-    const int num_split_dims_in
-        = std::count_if(in_grid.begin(), in_grid.end(), [](int n) { return n > 1; });
-    const int num_split_dims_out
-        = std::count_if(out_grid.begin(), out_grid.end(), [](int n) { return n > 1; });
-
-    bool can_pencil_alltoall
-        = (num_split_dims_in >= 2 && num_split_dims_out >= 2 && is_permutation(in_grid, out_grid));
 
     if(can_pencil_alltoall)
     {
