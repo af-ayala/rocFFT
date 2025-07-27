@@ -2948,7 +2948,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
     // track which dimensions have already been FFTed
-    std::vector<int> fft_done(3, 0);
+    std::cout << "rank = " << rank << std::endl;
+    std::vector<int> fft_done(rank, 0);
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
 
@@ -3155,8 +3156,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // default general decomposition without sub-communicators
     else
     {
-        std::cout << "$@% will rely on default " << std::endl;
-
+        std::cout << "---- will rely on default " << std::endl;
         // default slab-based intermediate decomposition
         // next, transpose non-contiguous dims to be contiguous and
         // transform them too
