@@ -2996,12 +2996,12 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             }
 
             // create the next field by splitting using a heuristic approach
-            rocfft_field_t nextField
-                = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, split_axes, split_sizes);
-
             rocfft_field_t         currentField       = desc.inFields.front();
             std::vector<BufferPtr> currentBufs        = inputFFTBufs;
             std::vector<size_t>    currentAntecedents = inputFFTItems;
+
+            rocfft_field_t nextField
+                = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, split_axes, split_sizes);
 
             std::cout << "___*___ nextField bricks:" << std::endl;
             for(const auto& b : nextField.bricks)
