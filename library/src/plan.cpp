@@ -2919,6 +2919,9 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     for(const auto& g : plan_transpose)
         std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
 
+
+    bool can_pencil_alltoall = true; 
+
     if(can_pencil_alltoall)
     {
         int my_global_rank, nprocs;
