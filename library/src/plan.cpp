@@ -2767,6 +2767,7 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
 }
 
 
+// ----------------------------------------------------------------------
 
 // Utility to compare arrays
 template<typename T, size_t N>
@@ -2775,50 +2776,64 @@ bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b) {
     return true;
 }
 
-// Find balanced factors for n = a*b, return pair (a, b) with a >= b
-std::pair<int,int> find_balanced_factors(int n) {
-    int best_a = n, best_b = 1, min_diff = n-1;
-    for(int b = 1; b <= n; ++b) {
-        if(n % b == 0) {
-            int a = n / b;
-            if(a >= b && a - b < min_diff) {
-                best_a = a; best_b = b; min_diff = a - b;
-            }
-        }
-    }
-    return {best_a, best_b};
+// Unique insertion utility
+template<typename T>
+void push_unique(std::vector<T>& vec, const T& val) {
+    if(std::find(vec.begin(), vec.end(), val) == vec.end())
+        vec.push_back(val);
 }
 
-// Main function
+// Find all pairs (a,b) such that a*b=prod and a>=1, b>=1
+std::vector<std::pair<int,int>> factor_pairs(int prod) {
+    std::vector<std::pair<int,int>> result;
+    for(int a=1; a<=prod; ++a) {
+        if(prod%a==0) {
+            int b = prod/a;
+            result.emplace_back(a,b);
+        }
+    }
+    return result;
+}
+
+// Main function to generate the minimal pencil plan
 std::vector<std::array<int,3>> get_transpose_plan(const std::array<int,3>& input_grid,
                                                   const std::array<int,3>& output_grid)
 {
-    int prod = input_grid[0] * input_grid[1] * input_grid[2];
-
-    // Generate the three unique pencil grids (one for each 1 position)
+    int prod = input_grid[0]*input_grid[1]*input_grid[2];
     std::vector<std::array<int,3>> pencils;
+
+    // For each axis, generate the pencil with 1 in that axis, largest and most balanced possible
     for(int pos = 0; pos < 3; ++pos) {
-        std::array<int,3> g;
-        auto [A,B] = find_balanced_factors(prod);
-        // Set 1 at pos, A, B at remaining
-        int idx = 0;
-        for(int d=0; d<3; ++d) {
-            if(d == pos) g[d] = 1;
-            else g[d] = (idx++ == 0) ? A : B;
+        auto pairs = factor_pairs(prod);
+        // Choose the pair with minimal |a-b| (most balanced)
+        int best_a = 1, best_b = prod, min_diff = prod;
+        for(const auto& [a,b]: pairs) {
+            int diff = std::abs(a-b);
+            if(diff < min_diff) {
+                best_a = a;
+                best_b = b;
+                min_diff = diff;
+            }
         }
-        // Ensure that for {2,2,2}, you get {1,2,4}, {2,1,4}, {4,2,1}
-        std::sort(g.begin(), g.end(), [](int x,int y){return x==1 ? true : (y==1 ? false : x<y);});
-        // Only add if unique (skip duplicates, and input/output)
-        bool duplicate = false;
-        if(array_equal(g, input_grid) || array_equal(g, output_grid)) continue;
-        for(const auto& prev : pencils) if(array_equal(prev,g)) duplicate = true;
-        if(!duplicate) pencils.push_back(g);
+        std::array<int,3> grid;
+        int idx = 0;
+        for(int i=0; i<3; ++i) {
+            if(i==pos)
+                grid[i] = 1;
+            else
+                grid[i] = (idx++==0) ? best_a : best_b;
+        }
+        // Don't add input/output or duplicates
+        if(!array_equal(grid, input_grid) && !array_equal(grid, output_grid))
+            push_unique(pencils, grid);
     }
 
+    // Build the plan: input → [all pencils] → output
     std::vector<std::array<int,3>> plan;
     plan.push_back(input_grid);
-    for(const auto& g : pencils) plan.push_back(g);
+    for(const auto& g: pencils) plan.push_back(g);
     plan.push_back(output_grid);
+
     return plan;
 }
 
