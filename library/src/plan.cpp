@@ -2921,8 +2921,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // auto plan2 = get_transpose_plan(g3, g4); // Expected: {2,2,2} {1,2,4} {2,1,4} {4,2,1} {2,2,2}
 
     std::array<int,3> g1{2,2,1}, g2{1,2,2};
-    auto plan1 = get_transpose_plan(g1, g2);
-    print_plan(plan1); // Expected: {2,2,1} {2,1,2} {1,2,2}
+    auto plan1 = get_transpose_plan(g1, g2); // Expected: {2,2,1} {2,1,2} {1,2,2}
 
     for(const auto& g : plan2)
         std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
