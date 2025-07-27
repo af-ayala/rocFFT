@@ -2975,6 +2975,10 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
+    // get processor grid from bricks for input and output
+    std::array<int, 3> in_grid  = infer_grid_from_bricks(desc.inFields[0].bricks);
+    std::array<int, 3> out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
+
     // count number of split dims in input and output grids
     const int num_split_dims_in
         = std::count_if(in_grid.begin(), in_grid.end(), [](int n) { return n > 1; });
@@ -2985,12 +2989,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2)
     {
-        // get processor grid from bricks for input and output
-        std::array<int, 3> in_grid  = infer_grid_from_bricks(desc.inFields[0].bricks);
-        std::array<int, 3> out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
-
         // plan transposition steps
-
         get_transpose_plan(in_grid, out_grid, plan_transpose);        
 
         for(const auto& g : plan_transpose)
