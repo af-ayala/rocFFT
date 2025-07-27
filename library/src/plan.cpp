@@ -2656,7 +2656,7 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
                                         const std::vector<int>&    split_axes,
                                         const std::vector<int>&    split_sizes)
 {
-    assert(split_axes.size() == 2 && split_sizes.size() == 2)
+    assert(split_axes.size() == 2 && split_sizes.size() == 2);
 
         int P
         = split_sizes[0],
@@ -2884,8 +2884,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         // perform global transposes and compute local FFTs
         for(const auto& grid : grids_sequence)
         {
-            std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << ","
-                      << g[1] << "," << g[2] << "} \n";
+            std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
+                      << grid[1] << "," << grid[2] << "} \n";
 
             // find pencil_axis (where grid==1), and split axes (where grid > 1)
             int              pencil_axis = -1;
@@ -2945,6 +2945,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             }
         }
 
+        /*
         if(0)
         {
             int my_global_rank;
@@ -3123,6 +3124,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                          finalFFTItems);
             }
         }
+        */
         MPI_Barrier(desc.mpi_comm);
     }
     // default general decomposition without sub-communicators
