@@ -2996,7 +2996,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
     }
     else{
-        std::cout << "$@% will rely on default" << std::endl;
+        std::cout << "$@% will rely on default plan_transpose.size " <<  plan_transpose.size() << std::endl;
     }
 
     bool can_pencil_alltoall = true;
