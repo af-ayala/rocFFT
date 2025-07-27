@@ -3017,7 +3017,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             int              pencil_axis;
             std::vector<int> split_axes;
             std::vector<int> split_sizes;
-            for(int d = 0; d < grid.size(); ++d)
+            for(size_t d = 0; d < grid.size(); ++d)
             {
                 if(grid[d] == 1)
                     pencil_axis = d;
