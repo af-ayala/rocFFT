@@ -2766,24 +2766,18 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
     return out;
 }
 
-
-// ----------------------------------------------------------------------
-
-// Utility to compare arrays
+// helpers for grid partition
 template<typename T, size_t N>
 bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b) {
     for(size_t i = 0; i < N; ++i) if(a[i] != b[i]) return false;
     return true;
 }
-
-// Unique insertion utility
 template<typename T>
 void push_unique(std::vector<T>& vec, const T& val) {
     if(std::find(vec.begin(), vec.end(), val) == vec.end())
         vec.push_back(val);
 }
-
-// Find all pairs (a,b) such that a*b=prod and a>=1, b>=1
+// find all pairs (a,b) such that a*b=prod and a>=1, b>=1
 std::vector<std::pair<int,int>> factor_pairs(int prod) {
     std::vector<std::pair<int,int>> result;
     for(int a=1; a<=prod; ++a) {
@@ -2910,17 +2904,18 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     std::array<int, 3> in_grid  = infer_grid_from_bricks(desc.inFields[0].bricks);
     std::array<int, 3> out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
 
-    // plan transposition
-    // auto plan_transpose = get_transpose_plan(in_grid, out_grid); // Expected: {2,2,1} {2,1,2} {1,2,2}
+    // plan transposition steps
+    // auto plan_transpose = get_transpose_plan(in_grid, out_grid);
 
-    std::array<int,3> g5{4,8,4}, g6{8,4,8};
+    std::array<int,3> g5{1,1,4}, g6{4,1,1};
     auto plan_transpose = get_transpose_plan(g5, g6);    
+
 
     for(const auto& g : plan_transpose)
         std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
 
 
-    bool can_pencil_alltoall = true; 
+    bool can_pencil_alltoall = true;
 
     if(can_pencil_alltoall)
     {
