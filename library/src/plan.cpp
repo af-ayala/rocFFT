@@ -2687,111 +2687,38 @@ rocfft_field_t MakeFieldWithSlabSplit(const rocfft_field_t&      base,
     return out;
 }
 
-// rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
-//                                         const std::vector<size_t>& lengthsWithBatch,
-//                                         int                        axis_entire,
-//                                         int                        nprocs)
-// {
-//     int ndim = lengthsWithBatch.size();
-
-//     // Find axes to split (not axis_entire)
-//     std::vector<int> split_axes;
-//     for(int d = 0; d < (int)ndim - 1; ++d)
-//         if(d != axis_entire)
-//             split_axes.push_back(d);
-
-//     // Factor nprocs as balanced as possible: P x Q = nprocs
-//     int P = 1, Q = nprocs;
-//     for(int f = 1; f <= nprocs; ++f)
-//     {
-//         if(nprocs % f == 0)
-//         {
-//             int q = nprocs / f;
-//             if(std::abs((int)f - (int)q) < std::abs((int)P - (int)Q))
-//             {
-//                 P = f;
-//                 Q = q;
-//             }
-//         }
-//     }
-//     // Prepare output field
-//     rocfft_field_t out = currentField;
-
-//     assert(P * Q == nprocs);
-
-//     out.bricks.resize(nprocs);
-
-//     // Distribute location/device assignments round-robin
-//     for(int i = 0; i < nprocs; ++i)
-//     {
-//         auto& brick = out.bricks[i];
-
-//         // Compute 2D (p, q) indices for this brick
-//         int p = i / Q;
-//         int q = i % Q;
-
-//         // Set bounds for each axis
-//         for(int d = 0; d < ndim; ++d)
-//         {
-//             brick.lower[d] = 0;
-//             brick.upper[d] = lengthsWithBatch[d];
-//         }
-
-//         int axis_p = split_axes[0];
-//         int axis_q = split_axes[1];
-
-//         int len_p           = lengthsWithBatch[axis_p];
-//         int len_q           = lengthsWithBatch[axis_q];
-//         brick.lower[axis_p] = len_p * p / P;
-//         brick.upper[axis_p] = len_p * (p + 1) / P;
-//         brick.lower[axis_q] = len_q * q / Q;
-//         brick.upper[axis_q] = len_q * (q + 1) / Q;
-//         // axis_entire stays [0,len]
-
-//         // Contiguous strides
-//         auto brickLength = brick.length();
-//         int  dist        = 1;
-//         for(size_t s = 0; s < brick.stride.size(); ++s)
-//         {
-//             brick.stride[s] = dist;
-//             dist *= brickLength[s];
-//         }
-
-//         // Assign device/rank in a round-robin fashion OR based on previous bricks
-//         // Here: round-robin from currentField
-//         const auto& ref_brick = currentField.bricks[i % currentField.bricks.size()];
-//         brick.location        = ref_brick.location;
-//     }
-
-//     return out;
-// }
-
 rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
                                         const std::vector<size_t>& lengthsWithBatch,
-                                        const std::array<int,3>&   grid)
+                                        int                        axis_entire,
+                                        int                        nprocs)
 {
-    int ndim = (int)lengthsWithBatch.size();
+    int ndim = lengthsWithBatch.size();
 
-    // Find axis_entire (where grid==1), and split axes (where grid > 1)
-    int axis_entire = -1;
+    // Find axes to split (not axis_entire)
     std::vector<int> split_axes;
-    std::vector<int> split_sizes;
-    for(int d = 0; d < 3; ++d)
-    {
-        if(grid[d] == 1)
-            axis_entire = d;
-        else {
+    for(int d = 0; d < (int)ndim - 1; ++d)
+        if(d != axis_entire)
             split_axes.push_back(d);
-            split_sizes.push_back(grid[d]);
+
+    // Factor nprocs as balanced as possible: P x Q = nprocs
+    int P = 1, Q = nprocs;
+    for(int f = 1; f <= nprocs; ++f)
+    {
+        if(nprocs % f == 0)
+        {
+            int q = nprocs / f;
+            if(std::abs((int)f - (int)q) < std::abs((int)P - (int)Q))
+            {
+                P = f;
+                Q = q;
+            }
         }
     }
-    if(axis_entire == -1 || split_axes.size() != 2)
-        throw std::runtime_error("Grid must have one 1 and two splits >1");
-
-    int P = split_sizes[0], Q = split_sizes[1];
-    int nprocs = P * Q;
-
+    // Prepare output field
     rocfft_field_t out = currentField;
+
+    assert(P * Q == nprocs);
+
     out.bricks.resize(nprocs);
 
     // Distribute location/device assignments round-robin
@@ -2831,12 +2758,85 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
         }
 
         // Assign device/rank in a round-robin fashion OR based on previous bricks
+        // Here: round-robin from currentField
         const auto& ref_brick = currentField.bricks[i % currentField.bricks.size()];
         brick.location        = ref_brick.location;
     }
 
     return out;
 }
+
+// rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
+//                                         const std::vector<size_t>& lengthsWithBatch,
+//                                         const std::array<int,3>&   grid)
+// {
+//     int ndim = (int)lengthsWithBatch.size();
+
+//     // Find axis_entire (where grid==1), and split axes (where grid > 1)
+//     int axis_entire = -1;
+//     std::vector<int> split_axes;
+//     std::vector<int> split_sizes;
+//     for(int d = 0; d < 3; ++d)
+//     {
+//         if(grid[d] == 1)
+//             axis_entire = d;
+//         else {
+//             split_axes.push_back(d);
+//             split_sizes.push_back(grid[d]);
+//         }
+//     }
+//     if(axis_entire == -1 || split_axes.size() != 2)
+//         throw std::runtime_error("Grid must be in pencil decomposition!");
+
+//     int P = split_sizes[0], Q = split_sizes[1];
+//     int nprocs = P * Q;
+
+//     rocfft_field_t out = currentField;
+//     out.bricks.resize(nprocs);
+
+//     // Distribute location/device assignments round-robin
+//     for(int i = 0; i < nprocs; ++i)
+//     {
+//         auto& brick = out.bricks[i];
+
+//         // Compute 2D (p, q) indices for this brick
+//         int p = i / Q;
+//         int q = i % Q;
+
+//         // Set bounds for each axis
+//         for(int d = 0; d < ndim; ++d)
+//         {
+//             brick.lower[d] = 0;
+//             brick.upper[d] = lengthsWithBatch[d];
+//         }
+
+//         int axis_p = split_axes[0];
+//         int axis_q = split_axes[1];
+
+//         int len_p           = lengthsWithBatch[axis_p];
+//         int len_q           = lengthsWithBatch[axis_q];
+//         brick.lower[axis_p] = len_p * p / P;
+//         brick.upper[axis_p] = len_p * (p + 1) / P;
+//         brick.lower[axis_q] = len_q * q / Q;
+//         brick.upper[axis_q] = len_q * (q + 1) / Q;
+//         // axis_entire stays [0,len]
+
+//         // Contiguous strides
+//         auto brickLength = brick.length();
+//         int  dist        = 1;
+//         for(size_t s = 0; s < brick.stride.size(); ++s)
+//         {
+//             brick.stride[s] = dist;
+//             dist *= brickLength[s];
+//         }
+
+//         // Assign device/rank in a round-robin fashion OR based on previous bricks
+//         const auto& ref_brick = currentField.bricks[i % currentField.bricks.size()];
+//         brick.location        = ref_brick.location;
+//     }
+
+//     return out;
+// }
 
 
 // helpers for grid partition
@@ -2862,10 +2862,13 @@ std::vector<std::pair<int,int>> factor_pairs(int prod) {
     return result;
 }
 
-// Main function to generate the minimal pencil plan
-std::vector<std::array<int,3>> get_transpose_plan(const std::array<int,3>& input_grid,
-                                                  const std::array<int,3>& output_grid)
+
+void get_transpose_plan(const std::array<int,3>& input_grid,
+                        const std::array<int,3>& output_grid,
+                        std::vector<std::array<int,3>>& plan)
 {
+    plan.clear(); // Make sure it's empty
+
     int prod = input_grid[0]*input_grid[1]*input_grid[2];
     std::vector<std::array<int,3>> pencils;
 
@@ -2896,13 +2899,12 @@ std::vector<std::array<int,3>> get_transpose_plan(const std::array<int,3>& input
     }
 
     // Build the plan: input → [all pencils] → output
-    std::vector<std::array<int,3>> plan;
     plan.push_back(input_grid);
     for(const auto& g: pencils) plan.push_back(g);
     plan.push_back(output_grid);
-
-    return plan;
 }
+
+
 
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
@@ -2973,14 +2975,13 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
-
-
-
     // count number of split dims in input and output grids
     const int num_split_dims_in
         = std::count_if(in_grid.begin(), in_grid.end(), [](int n) { return n > 1; });
     const int num_split_dims_out
         = std::count_if(out_grid.begin(), out_grid.end(), [](int n) { return n > 1; });
+
+    std::vector<std::array<int,3>> plan_transpose;
 
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2)
     {
@@ -2989,12 +2990,15 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         std::array<int, 3> out_grid = infer_grid_from_bricks(desc.outFields[0].bricks);
 
         // plan transposition steps
-        auto plan_transpose = get_transpose_plan(in_grid, out_grid);
+
+        get_transpose_plan(in_grid, out_grid, plan_transpose);        
 
         for(const auto& g : plan_transpose)
             std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << g[0] << "," << g[1] << "," << g[2] << "} \n";
     }
-
+    else{
+        std::cout << "$@% will rely on default" << std::endl;
+    }
 
     bool can_pencil_alltoall = true;
 
