@@ -2658,9 +2658,7 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
 {
     assert(split_axes.size() == 2 && split_sizes.size() == 2);
 
-        int P
-        = split_sizes[0],
-        Q        = split_sizes[1];
+    int P = split_sizes[0], Q = split_sizes[1];
     int n_bricks = P * Q;
 
     rocfft_field_t out = currentField;
@@ -2741,20 +2739,89 @@ std::vector<std::pair<int, int>> factor_pairs(int prod)
     return result;
 }
 
+enum class transpose_type
+{
+    pencil_to_pencil,
+    pencil_to_slab,
+    pencil_to_brick,
+    slab_to_pencil,
+    slab_to_slab,
+    slab_to_brick,
+    brick_to_pencil,
+    brick_to_slab,
+    brick_to_brick
+};
+
+inline int grid_kind(const std::array<int, 3>& g)
+{
+    int n_ones = 0;
+    for(int i = 0; i < 3; ++i)
+        if(g[i] == 1)
+            ++n_ones;
+    if(n_ones == 2)
+        return 1; // slab
+    if(n_ones == 1)
+        return 2; // pencil
+    if(n_ones == 0)
+        return 3; // brick
+    return 0; // shouldn't happen
+}
+
+inline const char* kind_str(int kind)
+{
+    if(kind == 1)
+        return "slab";
+    if(kind == 2)
+        return "pencil";
+    if(kind == 3)
+        return "brick";
+    return "?";
+}
+
+inline transpose_type get_transpose_type(const std::array<int, 3>& from,
+                                         const std::array<int, 3>& to)
+{
+    int kind_from = grid_kind(from);
+    int kind_to   = grid_kind(to);
+
+    if(kind_from == 2 && kind_to == 2)
+        return transpose_type::pencil_to_pencil;
+    if(kind_from == 2 && kind_to == 1)
+        return transpose_type::pencil_to_slab;
+    if(kind_from == 2 && kind_to == 3)
+        return transpose_type::pencil_to_brick;
+    if(kind_from == 1 && kind_to == 2)
+        return transpose_type::slab_to_pencil;
+    if(kind_from == 1 && kind_to == 1)
+        return transpose_type::slab_to_slab;
+    if(kind_from == 1 && kind_to == 3)
+        return transpose_type::slab_to_brick;
+    if(kind_from == 3 && kind_to == 2)
+        return transpose_type::brick_to_pencil;
+    if(kind_from == 3 && kind_to == 1)
+        return transpose_type::brick_to_slab;
+    if(kind_from == 3 && kind_to == 3)
+        return transpose_type::brick_to_brick;
+    throw std::runtime_error("Unknown transpose kind!");
+}
+
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
                         const std::array<int, 3>&        output_grid,
-                        std::vector<std::array<int, 3>>& plan)
+                        std::vector<std::array<int, 3>>& plan,
+                        std::vector<transpose_type>&     trans_types)
 {
-    plan.clear(); // Make sure it's empty
+    plan.clear();
+    trans_types.clear();
 
     int                             prod = input_grid[0] * input_grid[1] * input_grid[2];
     std::vector<std::array<int, 3>> pencils;
 
-    // For each axis, generate the pencil with 1 in that axis, largest and most balanced possible
+    // get sequence of grids
+    // for each axis, generate the pencil with 1 in that axis, largest and most balanced possible
     for(int pos = 0; pos < 3; ++pos)
     {
         auto pairs = factor_pairs(prod);
-        // Choose the pair with minimal |a-b| (most balanced)
+        // choose the pair with minimal |a-b| (most balanced)
         int best_a = 1, best_b = prod, min_diff = prod;
         for(const auto& [a, b] : pairs)
         {
@@ -2769,22 +2836,21 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
         std::array<int, 3> grid;
         int                idx = 0;
         for(int i = 0; i < 3; ++i)
-        {
-            if(i == pos)
-                grid[i] = 1;
-            else
-                grid[i] = (idx++ == 0) ? best_a : best_b;
-        }
-        // Don't add input/output or duplicates
+            grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? best_a : best_b);
+
         if(!array_equal(grid, input_grid) && !array_equal(grid, output_grid))
             push_unique(pencils, grid);
     }
 
-    // Build the plan: input → [all pencils] → output
+    // tranpose plan: input → [all pencils] → output
     plan.push_back(input_grid);
     for(const auto& g : pencils)
         plan.push_back(g);
     plan.push_back(output_grid);
+
+    // get transpose type sequence
+    for(size_t i = 1; i < plan.size(); ++i)
+        trans_types.push_back(get_transpose_type(plan[i - 1], plan[i]));
 }
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
@@ -2871,6 +2937,21 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     // get transpose grids sequence for pencil and brick decompositions, from input to output
     std::vector<std::array<int, 3>> grids_sequence;
+    std::vector<transpose_type> transpose_sequence;
+    
+    // plan transposition steps
+    get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
+
+    for(const auto& grid : grids_sequence)
+    {
+        std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
+                    << grid[1] << "," << grid[2] << "} \n";
+    }
+
+    for(const auto& type : transpose_sequence)
+    {
+        std::cout << "@@transpose_sequence [" << local_comm_rank << "]" << type[0] << std::endl;
+    }    
 
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
@@ -2878,17 +2959,12 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // optimized pencil-to-pencil transform using sub-communicators
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2)
     {
-        // plan transposition steps
-        get_transpose_plan(in_grid, out_grid, grids_sequence);
 
         // perform global transposes and compute local FFTs
         for(const auto& grid : grids_sequence)
         {
-            std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
-                      << grid[1] << "," << grid[2] << "} \n";
-
             // find pencil_axis (where grid==1), and split axes (where grid > 1)
-            int              pencil_axis = -1;
+            int              pencil_axis;
             std::vector<int> split_axes;
             std::vector<int> split_sizes;
             for(int d = 0; d < 3; ++d)
@@ -2901,16 +2977,14 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                     split_sizes.push_back(grid[d]);
                 }
             }
-            if(pencil_axis == -1 || split_axes.size() != 2)
-                throw std::runtime_error("Grid must be in pencil decomposition!");
-
-            rocfft_field_t         currentField       = desc.inFields.front();
-            std::vector<BufferPtr> currentBufs        = inputFFTBufs;
-            std::vector<size_t>    currentAntecedents = inputFFTItems;
 
             // create the next field by splitting using a heuristic approach
             rocfft_field_t nextField
                 = MakeFieldWithPencilSplit(currentField, lengthsWithBatch, split_axes, split_sizes);
+
+            rocfft_field_t         currentField       = desc.inFields.front();
+            std::vector<BufferPtr> currentBufs        = inputFFTBufs;
+            std::vector<size_t>    currentAntecedents = inputFFTItems;
 
             std::cout << "___*___ nextField bricks:" << std::endl;
             for(const auto& b : nextField.bricks)
@@ -2925,7 +2999,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 std::cout << "  dev: " << b.location.device;
                 std::cout << std::endl;
             }
-
             std::array<int, 3> nf_grid = infer_grid_from_bricks(nextField.bricks);
             std::cout << "___*___  nextField grid: " << nf_grid[0] << " " << nf_grid[1] << " "
                       << nf_grid[2] << std::endl;
