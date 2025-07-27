@@ -2997,6 +2997,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     if(pencil_to_pencil)
     {
 
+        std::cout << "performing pencil_to_pencil " << std::endl;
         // perform global transposes and compute local FFTs
         for(const auto& grid : grids_sequence)
         {
