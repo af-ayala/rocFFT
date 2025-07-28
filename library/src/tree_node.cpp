@@ -913,16 +913,16 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     std::cout<<"executed being called 11" << std::endl;
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
-    const size_t num_ranks = plan->get_local_comm_size();
-    if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
-       || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
-        throw std::runtime_error(
-            "CommAllToAll: number of counts/offsets does not match number of ranks");
+    // const size_t num_ranks = plan->get_local_comm_size();
+    // if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
+    //    || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
+    //     throw std::runtime_error(
+    //         "CommAllToAll: number of counts/offsets does not match number of ranks");
 
-    if(LOG_PLAN_ENABLED())
-    {
-        log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
-    }
+    // if(LOG_PLAN_ENABLED())
+    // {
+    //     log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
+    // }
 
     std::cout<<"berfore check  " << std::endl;
 
