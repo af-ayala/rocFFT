@@ -1396,7 +1396,7 @@ struct CommAllToAll : public MultiPlanItem
         , recvCounts(_recvCounts)
         , sendBuf(_sendBuf)
         , recvBuf(_recvBuf)
-        , uniform_counts(uniformCounts), 
+        , uniform_counts(uniformCounts) 
         , subcomm(std::move(subcomm))
     {
         // Currently MPI interface uses 32-bit signed ints, so assert
