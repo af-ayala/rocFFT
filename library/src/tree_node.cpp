@@ -923,10 +923,26 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             << " recvCounts.size()=" << recvCounts.size()
             << std::endl;
 
+    auto print_vec = [](const std::string& name, const std::vector<size_t>& v)
+    {
+        std::cout << name << ": ";
+        for(size_t x : v) std::cout << x << " ";
+        std::cout << std::endl;
+    };
+    print_vec("sendOffsets", sendOffsets);
+    print_vec("sendCounts", sendCounts);
+    print_vec("recvOffsets", recvOffsets);
+    print_vec("recvCounts", recvCounts);            
+
     if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
-       || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
+       || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks){
+
+    std::cerr << "[ERROR][Rank " << local_comm_rank << "]"
+              << " Mismatched counts/offsets vector sizes! Printing contents..." << std::endl;
+
         throw std::runtime_error(
             "CommAllToAll: number of counts/offsets does not match number of ranks");
+       }
 
     if(LOG_PLAN_ENABLED())
     {
