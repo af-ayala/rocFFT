@@ -2121,6 +2121,7 @@ void rocfft_plan_t::GlobalTransposeP2P(size_t                     elem_size,
     }
 }
 
+// global transpose using MPI sub-communicators
 void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_size,
                                               const rocfft_field_t&      inField,
                                               const rocfft_field_t&      outField,
@@ -2578,49 +2579,6 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     std::cout << "+++ recv_counts: rank [" << local_comm_rank << "] : " << recv_counts[0] << " "
               << recv_counts[1] << " " << recv_counts[2] << " " << recv_counts[3] << std::endl;
 
-    std::cout << "inField bricks:" << std::endl;
-    for(const auto& b : inField.bricks)
-    {
-        std::cout << "  lower: ";
-        for(auto v : b.lower)
-            std::cout << v << " ";
-        std::cout << "  upper: ";
-        for(auto v : b.upper)
-            std::cout << v << " ";
-        std::cout << "  rank: " << b.location.comm_rank;
-        std::cout << "  dev: " << b.location.device;
-        std::cout << std::endl;
-    }
-
-    std::cout << "outField bricks:" << std::endl;
-    for(const auto& b : outField.bricks)
-    {
-        std::cout << "  lower: ";
-        for(auto v : b.lower)
-            std::cout << v << " ";
-        std::cout << "  upper: ";
-        for(auto v : b.upper)
-            std::cout << v << " ";
-        std::cout << "  rank: " << b.location.comm_rank;
-        std::cout << "  dev: " << b.location.device;
-        std::cout << std::endl;
-    }
-
-    // valid also for 1D and 2D FFTs
-    std::array<int, 3> in_grid  = {1, 1, 1};
-    std::array<int, 3> out_grid = {1, 1, 1};
-
-    if(!inField.bricks.empty())
-        in_grid = infer_grid_from_bricks(inField.bricks);
-
-    if(!outField.bricks.empty())
-        out_grid = infer_grid_from_bricks(outField.bricks);
-
-    std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2]
-              << std::endl;
-    std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2]
-              << std::endl;
-
     // add the all-to-all op itself, which depends on pack ops
     auto alltoall_ptr = std::make_unique<CommAllToAll>(precision,
                                                        desc.inArrayType,
@@ -2947,7 +2905,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
 #ifdef ROCFFT_MPI_ENABLE
     // track which dimensions have already been FFTed
-    std::cout << "rank = " << rank << std::endl;
     std::vector<int> fft_done(rank, 0);
     for(auto d : contiguousInputDims)
         fft_done[d] = 1;
