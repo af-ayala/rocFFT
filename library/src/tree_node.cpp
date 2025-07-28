@@ -941,8 +941,6 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             "CommAllToAll: number of counts/offsets does not match number of ranks");
     }
 
-    // #ifdef ROCFFT_MPI_ENABLE
-
     int global_rank = local_comm_rank;
 
     const auto  elem_size = element_size(precision, arrayType);
