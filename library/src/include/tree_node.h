@@ -1363,13 +1363,6 @@ private:
     std::vector<hipEvent_wrapper_t> events;
 };
 
-// Macro for sub-communicator
-#ifdef ROCFFT_MPI_ENABLE
-#define ROCFFT_COMMALLTOALL_SUBCOMM_INIT , subcomm(std::move(subcomm))
-#else
-#define ROCFFT_COMMALLTOALL_SUBCOMM_INIT
-#endif
-
 // Send data from all ranks to all ranks in the plan.  Each rank must
 // send from/to a single buffer (with different read/write offsets
 // for each other rank).
@@ -1465,6 +1458,11 @@ struct CommAllToAll : public MultiPlanItem
     void set_uniform_count_inside_subcomm(size_t val)
     {
         uniform_count_inside_subcomm = val;
+    }
+    
+    void set_uniform_count(bool val)
+    {
+        uniform_counts = val;
     }
 
 private:
