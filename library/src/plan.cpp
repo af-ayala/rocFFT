@@ -2132,7 +2132,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                               const std::string&         itemGroup,
                                               MPI_Comm_wrapper_t&&       subcomm)
 {
-#ifdef ROCFFT_MPI_ENABLE
+// #ifdef ROCFFT_MPI_ENABLE
     std::cout << "called GlobalTransposeA2ASubcomm " << std::endl;
 
     int subcomm_rank = -1, subcomm_size = -1;
@@ -2392,7 +2392,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
 
     // subsequent operations can depend on the unpack ops
     outputItems = unpack_ops;
-#endif
+// #endif
 }
 
 void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
@@ -2901,7 +2901,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
-#ifdef ROCFFT_MPI_ENABLE
+// #ifdef ROCFFT_MPI_ENABLE
     // track which dimensions have already been FFTed
     std::vector<int> fft_done(rank, 0);
     for(auto d : contiguousInputDims)
@@ -2986,15 +2986,22 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
             // allocate temp buffers for nextField
             std::vector<TempBufferLease> tempLeases;
-            std::vector<BufferPtr>       tempBufs;
-            for(size_t b = 0; b < nextField.bricks.size(); ++b)
-            {
-                tempLeases.emplace_back(tempBuffers,
-                                        local_comm_rank,
-                                        nextField.bricks[b].location,
-                                        nextField.bricks[b].count_elems(),
-                                        elem_size);
-                tempBufs.emplace_back(BufferPtr::temp(tempLeases.back().data()));
+            std::vector<BufferPtr> tempBufs(pencil_comm_size);
+
+            // Loop over the pencil_neighbors_vec (these are the global ranks in this subcomm)
+            for(int i = 0; i < pencil_comm_size; ++i) {
+                int global_rank = pencil_neighbors_vec[i];
+                // Only allocate if this process is actually part of the subcomm (should always be true)
+                if(global_rank == local_comm_rank) {
+                    tempLeases.emplace_back(tempBuffers,
+                                            local_comm_rank,
+                                            nextField.bricks[i].location,
+                                            nextField.bricks[i].count_elems(),
+                                            elem_size);
+                    tempBufs[i] = BufferPtr::temp(tempLeases.back().data());
+                } else {
+                    tempBufs[i] = BufferPtr(); // or leave as nullptr/empty
+                }
             }
 
             // determine overlapping ranks (subcommunicator members)
@@ -3083,7 +3090,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     }
     // default general decomposition without sub-communicators
     else
-#endif
+// #endif
     {
         // transpose non-contiguous dims to be contiguous and
         // transform them too

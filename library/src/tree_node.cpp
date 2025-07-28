@@ -912,14 +912,20 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 {
     std::cout << "ExecuteAsync called " << std::endl;
 
+    if(LOG_PLAN_ENABLED())
+    {
+        log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
+    }
+
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
-    size_t num_ranks    = 0;
+    size_t num_ranks    = -1;
     int    subcomm_rank = -1;
     if(subcomm)
     {
         int tmp_num_ranks = 0;
         MPI_Comm_size(subcomm, &tmp_num_ranks);
+        assert(tmp_num_ranks >= 0);
         num_ranks = static_cast<size_t>(tmp_num_ranks);
         MPI_Comm_rank(subcomm, &subcomm_rank);
     }
@@ -956,11 +962,6 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             "CommAllToAll: number of counts/offsets does not match number of ranks");
     }
 
-    if(LOG_PLAN_ENABLED())
-    {
-        log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
-    }
-
     // #ifdef ROCFFT_MPI_ENABLE
 
     int global_rank = local_comm_rank;
@@ -985,8 +986,8 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             throw std::runtime_error(
                 "CommAllToAll::ExecuteAsync: non-uniform counts in pencil subcomm!");
 
-        void* send_ptr = sendBuf.get(in_buffer, out_buffer, subcomm_rank);
-        void* recv_ptr = recvBuf.get(in_buffer, out_buffer, subcomm_rank);
+        void* send_ptr = sendBuf.get(in_buffer, out_buffer, local_comm_rank);
+        void* recv_ptr = recvBuf.get(in_buffer, out_buffer, local_comm_rank);
 
         std::cout << "sendBuf ptr: " << send_ptr << ", recvBuf ptr: " << recv_ptr << std::endl;
         if(!send_ptr || !recv_ptr)
@@ -1008,20 +1009,22 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         size_t total_recv_buf_bytes
             = std::accumulate(recvCounts.begin(), recvCounts.end(), 0ULL) * elem_size;
 
-        std::cout << "[Rank " << subcomm_rank << "] sendBuf ptr: " << send_ptr << " ("
+        std::cout << "[Rank " << local_comm_rank << "] sendBuf ptr:  (send_count_bytes2) " << send_ptr << " ("
                   << total_send_buf_bytes << " bytes total, " << send_count_bytes2
                   << " bytes per partner)" << std::endl;
-        std::cout << "[Rank " << subcomm_rank << "] recvBuf ptr: " << recv_ptr << " ("
+        std::cout << "[Rank " << local_comm_rank << "] recvBuf ptr: (recv_count_bytes2)" << recv_ptr << " ("
                   << total_recv_buf_bytes << " bytes total, " << recv_count_bytes2
                   << " bytes per partner)" << std::endl;
 
         // In subcomm: sendCounts, recvCounts, etc are sized for num_ranks, indexed by subcomm_rank
         const int send_count_bytes = static_cast<int>(uniform_count_inside_subcomm * elem_size);
 
-        int ret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, subcomm_rank),
+        std::cout << " send_count_bytes is = uniform_count_inside_subcomm =  " << uniform_count_inside_subcomm << std::endl;
+
+        int ret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
                                 send_count_bytes,
                                 MPI_CHAR,
-                                recvBuf.get(in_buffer, out_buffer, subcomm_rank),
+                                recvBuf.get(in_buffer, out_buffer, local_comm_rank),
                                 send_count_bytes,
                                 MPI_CHAR,
                                 subcomm,
