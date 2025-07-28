@@ -45,6 +45,20 @@ constexpr size_t PowMax()
     return u;
 }
 
+// types of global transpositions
+enum class transpose_type
+{
+    pencil_to_pencil,
+    pencil_to_slab,
+    pencil_to_brick,
+    slab_to_pencil,
+    slab_to_slab,
+    slab_to_brick,
+    brick_to_pencil,
+    brick_to_slab,
+    brick_to_brick
+};
+
 // Generic function to check is pow of a given base number or not
 template <int base>
 static inline bool IsPow(size_t u)
@@ -114,24 +128,6 @@ struct rocfft_brick_t
 
     std::string str() const;
 };
-
-inline std::array<int, 3> infer_grid_from_bricks(const std::vector<rocfft_brick_t>& bricks)
-{
-    std::set<size_t> xset, yset, zset;
-    for(const auto& b : bricks)
-    {
-        if(b.lower.size() >= 1)
-            xset.insert(b.lower[0]);
-        if(b.lower.size() >= 2)
-            yset.insert(b.lower[1]);
-        if(b.lower.size() >= 3)
-            zset.insert(b.lower[2]);
-    }
-    int nx = std::max(1, static_cast<int>(xset.size()));
-    int ny = std::max(1, static_cast<int>(yset.size()));
-    int nz = std::max(1, static_cast<int>(zset.size()));
-    return {nx, ny, nz};
-}
 
 struct rocfft_field_t
 {
@@ -414,5 +410,245 @@ private:
 bool PlanPowX(ExecPlan& execPlan);
 bool GetTuningKernelInfo(ExecPlan& execPlan);
 void RuntimeCompilePlan(ExecPlan& execPlan);
+
+// Geometry handling helpers for brick and field manipulation
+inline std::array<int, 3> infer_grid_from_bricks(const std::vector<rocfft_brick_t>& bricks)
+{
+    std::set<size_t> xset, yset, zset;
+    for(const auto& b : bricks)
+    {
+        if(b.lower.size() >= 1)
+            xset.insert(b.lower[0]);
+        if(b.lower.size() >= 2)
+            yset.insert(b.lower[1]);
+        if(b.lower.size() >= 3)
+            zset.insert(b.lower[2]);
+    }
+    int nx = std::max(1, static_cast<int>(xset.size()));
+    int ny = std::max(1, static_cast<int>(yset.size()));
+    int nz = std::max(1, static_cast<int>(zset.size()));
+    return {nx, ny, nz};
+}
+
+
+// Return a transposed field layout that makes the specified
+// dimension contiguous on all bricks.  Length covers the whole field
+// and includes batch dimension.  Input field is provided so we can
+// distribute output bricks among the same devices that the input
+// bricks are distributed to.
+static rocfft_field_t MakeFieldDimContiguous(const rocfft_field_t&      field,
+                                             const std::vector<size_t>& length,
+                                             size_t                     dimIdx)
+{
+    rocfft_field_t out = field;
+    // find first dim that's not the one we're making contiguous and
+    // is at least as big as the number of bricks - we can split on
+    // that dimension
+    std::optional<size_t> splitDim;
+    for(size_t dim = 0; dim < length.size(); ++dim)
+    {
+        if(dim != dimIdx && length[dim] >= field.bricks.size())
+            splitDim = dim;
+    }
+    if(!splitDim)
+        throw std::runtime_error("not enough lengths to split to make dim contiguous");
+
+    for(size_t i = 0; i < out.bricks.size(); ++i)
+    {
+        auto& outBrick = out.bricks[i];
+
+        // start lower and upper at origin and max, respectively
+        std::fill(outBrick.lower.begin(), outBrick.lower.end(), 0);
+        outBrick.upper = length;
+
+        // divide up the split dim
+        outBrick.lower[*splitDim] = length[*splitDim] / out.bricks.size() * i;
+        // last brick needs to include the whole length
+        if(i == out.bricks.size() - 1)
+            outBrick.upper[*splitDim] = length[*splitDim];
+        else
+            outBrick.upper[*splitDim] = length[*splitDim] / out.bricks.size() * (i + 1);
+
+        auto brickLength = outBrick.length();
+
+        // set strides - contiguous dim has stride 1
+        size_t dist             = 1;
+        outBrick.stride[dimIdx] = dist;
+        dist *= brickLength[dimIdx];
+        // split dim is contiguous after that
+        outBrick.stride[*splitDim] = dist;
+        dist *= brickLength[*splitDim];
+        // fill in remaining strides
+        for(size_t s = 0; s < outBrick.stride.size(); ++s)
+        {
+            if(s == dimIdx || s == *splitDim)
+                continue;
+            outBrick.stride[s] = dist;
+            dist *= brickLength[s];
+        }
+    }
+    return out;
+}
+
+
+inline int grid_kind(const std::array<int, 3>& g)
+{
+    int n_ones = 0;
+    for(int i = 0; i < 3; ++i)
+        if(g[i] == 1)
+            ++n_ones;
+    if(n_ones == 2)
+        return 1; // slab
+    if(n_ones == 1)
+        return 2; // pencil
+    if(n_ones == 0)
+        return 3; // brick
+    return 0;
+}
+
+inline const char* kind_str(int kind)
+{
+    if(kind == 1)
+        return "slab";
+    if(kind == 2)
+        return "pencil";
+    if(kind == 3)
+        return "brick";
+    return "?";
+}
+
+inline transpose_type get_transpose_type(const std::array<int, 3>& from,
+                                         const std::array<int, 3>& to)
+{
+    int kind_from = grid_kind(from);
+    int kind_to   = grid_kind(to);
+
+    if(kind_from == 2 && kind_to == 2)
+        return transpose_type::pencil_to_pencil;
+    if(kind_from == 2 && kind_to == 1)
+        return transpose_type::pencil_to_slab;
+    if(kind_from == 2 && kind_to == 3)
+        return transpose_type::pencil_to_brick;
+    if(kind_from == 1 && kind_to == 2)
+        return transpose_type::slab_to_pencil;
+    if(kind_from == 1 && kind_to == 1)
+        return transpose_type::slab_to_slab;
+    if(kind_from == 1 && kind_to == 3)
+        return transpose_type::slab_to_brick;
+    if(kind_from == 3 && kind_to == 2)
+        return transpose_type::brick_to_pencil;
+    if(kind_from == 3 && kind_to == 1)
+        return transpose_type::brick_to_slab;
+    if(kind_from == 3 && kind_to == 3)
+        return transpose_type::brick_to_brick;
+    throw std::runtime_error("Unknown transpose kind!");
+}
+
+inline const char* transpose_type_str(transpose_type t)
+{
+    switch(t)
+    {
+    case transpose_type::pencil_to_pencil:
+        return "pencil_to_pencil";
+    case transpose_type::pencil_to_slab:
+        return "pencil_to_slab";
+    case transpose_type::pencil_to_brick:
+        return "pencil_to_brick";
+    case transpose_type::slab_to_pencil:
+        return "slab_to_pencil";
+    case transpose_type::slab_to_slab:
+        return "slab_to_slab";
+    case transpose_type::slab_to_brick:
+        return "slab_to_brick";
+    case transpose_type::brick_to_pencil:
+        return "brick_to_pencil";
+    case transpose_type::brick_to_slab:
+        return "brick_to_slab";
+    case transpose_type::brick_to_brick:
+        return "brick_to_brick";
+    default:
+        return "?";
+    }
+}
+
+
+// helpers for grid partition
+template <typename T, size_t N>
+bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b)
+{
+    for(size_t i = 0; i < N; ++i)
+        if(a[i] != b[i])
+            return false;
+    return true;
+}
+template <typename T>
+void push_unique(std::vector<T>& vec, const T& val)
+{
+    if(std::find(vec.begin(), vec.end(), val) == vec.end())
+        vec.push_back(val);
+}
+// find all pairs (a,b) such that a*b=prod and a>=1, b>=1
+std::vector<std::pair<int, int>> factor_pairs(int prod)
+{
+    std::vector<std::pair<int, int>> result;
+    for(int a = 1; a <= prod; ++a)
+    {
+        if(prod % a == 0)
+        {
+            int b = prod / a;
+            result.emplace_back(a, b);
+        }
+    }
+    return result;
+}
+
+void get_transpose_plan(const std::array<int, 3>&        input_grid,
+                        const std::array<int, 3>&        output_grid,
+                        std::vector<std::array<int, 3>>& plan,
+                        std::vector<transpose_type>&     trans_types)
+{
+    plan.clear();
+    trans_types.clear();
+
+    int                             prod = input_grid[0] * input_grid[1] * input_grid[2];
+    std::vector<std::array<int, 3>> pencils;
+
+    // get sequence of grids
+    // for each axis, generate the pencil with 1 in that axis, largest and most balanced possible
+    for(int pos = 0; pos < 3; ++pos)
+    {
+        auto pairs = factor_pairs(prod);
+        // choose the pair with minimal |a-b| (most balanced)
+        int best_a = 1, best_b = prod, min_diff = prod;
+        for(const auto& [a, b] : pairs)
+        {
+            int diff = std::abs(a - b);
+            if(diff < min_diff)
+            {
+                best_a   = a;
+                best_b   = b;
+                min_diff = diff;
+            }
+        }
+        std::array<int, 3> grid;
+        int                idx = 0;
+        for(int i = 0; i < 3; ++i)
+            grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? best_a : best_b);
+
+        if(!array_equal(grid, input_grid) && !array_equal(grid, output_grid))
+            push_unique(pencils, grid);
+    }
+
+    // tranpose plan: input → [all pencils] → output
+    plan.push_back(input_grid);
+    for(const auto& g : pencils)
+        plan.push_back(g);
+    plan.push_back(output_grid);
+
+    // get transpose type sequence
+    for(size_t i = 1; i < plan.size(); ++i)
+        trans_types.push_back(get_transpose_type(plan[i - 1], plan[i]));
+}
+
 
 #endif // PLAN_H
