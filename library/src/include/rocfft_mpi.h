@@ -42,7 +42,6 @@ public:
         return wrap;
     }
 
-
     // conversion to unwrapped communicator for passing to MPI APIs
     operator MPI_Comm() const
     {
@@ -288,7 +287,7 @@ class MPI_Comm_wrapper_t
 public:
     MPI_Comm_wrapper_t() {}
     static MPI_Comm_wrapper_t from_raw(int) { return MPI_Comm_wrapper_t{}; }
-    // Allow conversion to bool (always false)
+    // allow conversion to bool (always false)
     operator bool() const { return false; }
 };
 

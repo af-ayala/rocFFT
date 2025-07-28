@@ -910,12 +910,12 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 rocfft_execution_info info,
                                 size_t                multiPlanIdx)
 {
-    std::cout << "ExecuteAsync called " << std::endl;
-
     if(LOG_PLAN_ENABLED())
     {
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
+
+    // #ifdef ROCFFT_MPI_ENABLE
 
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
@@ -934,30 +934,9 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         num_ranks = plan->get_local_comm_size();
     }
 
-    std::cout << "[DEBUG][Rank " << local_comm_rank << "] num_ranks=" << num_ranks
-              << " sendOffsets.size()=" << sendOffsets.size()
-              << " sendCounts.size()=" << sendCounts.size()
-              << " recvOffsets.size()=" << recvOffsets.size()
-              << " recvCounts.size()=" << recvCounts.size() << std::endl;
-
-    auto print_vec = [](const std::string& name, const std::vector<size_t>& v) {
-        std::cout << name << ": ";
-        for(size_t x : v)
-            std::cout << x << " ";
-        std::cout << std::endl;
-    };
-    print_vec("sendOffsets", sendOffsets);
-    print_vec("sendCounts", sendCounts);
-    print_vec("recvOffsets", recvOffsets);
-    print_vec("recvCounts", recvCounts);
-
     if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
        || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
     {
-
-        std::cerr << "[ERROR][Rank " << local_comm_rank << "]"
-                  << " Mismatched counts/offsets vector sizes! Printing contents..." << std::endl;
-
         throw std::runtime_error(
             "CommAllToAll: number of counts/offsets does not match number of ranks");
     }
@@ -974,14 +953,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall with sub-communicators\n");
 
-        std::cout << "@@ Running inside subcomm inside ExecuteAsync" << std::endl;
-
         // optimization with pencil sub-communicators
-        std::cout << "[Rank " << global_rank
-                  << "] Subcomm ExecuteAsync: sub num_ranks=" << num_ranks
-                  << " subcomm_rank=" << subcomm_rank << " uniform=" << uniform_counts
-                  << " uniform_count_inside_subcomm=" << uniform_count_inside_subcomm << std::endl;
-
         if(!uniform_counts)
             throw std::runtime_error(
                 "CommAllToAll::ExecuteAsync: non-uniform counts in pencil subcomm!");
@@ -989,37 +961,14 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         void* send_ptr = sendBuf.get(in_buffer, out_buffer, local_comm_rank);
         void* recv_ptr = recvBuf.get(in_buffer, out_buffer, local_comm_rank);
 
-        std::cout << "sendBuf ptr: " << send_ptr << ", recvBuf ptr: " << recv_ptr << std::endl;
         if(!send_ptr || !recv_ptr)
         {
-            std::cerr << "Buffer pointer(s) are null!" << std::endl;
+           throw std::runtime_error("Buffer pointer(s) are null!");
         }
 
-        // Suppose you have these available:
-        size_t send_count_elems = sendCounts[subcomm_rank]; // or sendCounts[0], if uniform
-        size_t recv_count_elems = recvCounts[subcomm_rank];
+        // in subcomm: sendCounts, recvCounts, etc are sized for num_ranks, indexed by subcomm_rank
         size_t elem_size        = element_size(precision, arrayType);
-
-        size_t send_count_bytes2 = send_count_elems * elem_size;
-        size_t recv_count_bytes2 = recv_count_elems * elem_size;
-
-        // Total buffer size, if you have one buffer for all ranks
-        size_t total_send_buf_bytes
-            = std::accumulate(sendCounts.begin(), sendCounts.end(), 0ULL) * elem_size;
-        size_t total_recv_buf_bytes
-            = std::accumulate(recvCounts.begin(), recvCounts.end(), 0ULL) * elem_size;
-
-        std::cout << "[Rank " << local_comm_rank << "] sendBuf ptr:  (send_count_bytes2) " << send_ptr << " ("
-                  << total_send_buf_bytes << " bytes total, " << send_count_bytes2
-                  << " bytes per partner)" << std::endl;
-        std::cout << "[Rank " << local_comm_rank << "] recvBuf ptr: (recv_count_bytes2)" << recv_ptr << " ("
-                  << total_recv_buf_bytes << " bytes total, " << recv_count_bytes2
-                  << " bytes per partner)" << std::endl;
-
-        // In subcomm: sendCounts, recvCounts, etc are sized for num_ranks, indexed by subcomm_rank
         const int send_count_bytes = static_cast<int>(uniform_count_inside_subcomm * elem_size);
-
-        std::cout << " send_count_bytes is = uniform_count_inside_subcomm =  " << uniform_count_inside_subcomm << std::endl;
 
         int ret = MPI_Ialltoall(sendBuf.get(in_buffer, out_buffer, local_comm_rank),
                                 send_count_bytes,
@@ -1045,8 +994,6 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     {
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoall\n");
-
-        std::cout << "else as uniform MPI_Ialltoall " << std::endl;
 
         const int send_count_bytes = static_cast<int>(sendCounts[0] * elem_size);
 
@@ -1076,8 +1023,6 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     {
         if(LOG_PLAN_ENABLED())
             log_plan("Using MPI_Ialltoallv\n");
-
-        std::cout << "else as altoallv " << std::endl;
 
         // non-uniform exchange case (default)
         const int local_comm_rank = plan->get_local_comm_rank();

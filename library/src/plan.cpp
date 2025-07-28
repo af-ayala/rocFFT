@@ -2133,8 +2133,6 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                               MPI_Comm_wrapper_t&&       subcomm)
 {
 // #ifdef ROCFFT_MPI_ENABLE
-    std::cout << "called GlobalTransposeA2ASubcomm " << std::endl;
-
     int subcomm_rank = -1, subcomm_size = -1;
     MPI_Comm_rank(subcomm, &subcomm_rank);
     MPI_Comm_size(subcomm, &subcomm_size);
@@ -2299,7 +2297,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
         }
     }
 
-    // Check uniformity *within the subcomm* for alltoall
+    // check uniformity for alltoall within the subcomm 
     bool uniform_counts = std::all_of(send_counts.begin(),
                                       send_counts.end(),
                                       [&](size_t c) { return c == send_counts[0]; })
@@ -2313,60 +2311,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
     else
         throw std::runtime_error("Non-uniform send_counts in pencil subcomm!");
 
-    std::cout << " the sending uniform_count_inside_subcomm is = " << uniform_count_inside_subcomm
-              << std::endl;
-
-    std::cout << "subcomm inField bricks:" << std::endl;
-    for(const auto& b : inField.bricks)
-    {
-        std::cout << "  lower: ";
-        for(auto v : b.lower)
-            std::cout << v << " ";
-        std::cout << "  upper: ";
-        for(auto v : b.upper)
-            std::cout << v << " ";
-        std::cout << "  rank: " << b.location.comm_rank;
-        std::cout << "  dev: " << b.location.device;
-        std::cout << std::endl;
-    }
-
-    std::cout << "subcomm outField bricks:" << std::endl;
-    for(const auto& b : outField.bricks)
-    {
-        std::cout << "  lower: ";
-        for(auto v : b.lower)
-            std::cout << v << " ";
-        std::cout << "  upper: ";
-        for(auto v : b.upper)
-            std::cout << v << " ";
-        std::cout << "  rank: " << b.location.comm_rank;
-        std::cout << "  dev: " << b.location.device;
-        std::cout << std::endl;
-    }
-
-    std::array<int, 3> in_grid;
-    std::array<int, 3> out_grid;
-    if(!inField.bricks.empty())
-        in_grid = infer_grid_from_bricks(inField.bricks);
-    if(!outField.bricks.empty())
-        out_grid = infer_grid_from_bricks(outField.bricks);
-    std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2]
-              << std::endl;
-    std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2]
-              << std::endl;
-
-    std::cout << "[Rank " << my_global_rank << "] (subcomm) uniform_counts: " << uniform_counts
-              << std::endl;
-    std::cout << "[Rank " << my_global_rank << "] (subcomm) send_counts: ";
-    for(size_t c : send_counts)
-        std::cout << c << " ";
-    std::cout << std::endl;
-    std::cout << "[Rank " << my_global_rank << "] (subcomm) recv_counts: ";
-    for(size_t c : recv_counts)
-        std::cout << c << " ";
-    std::cout << std::endl;
-
-    // Add the all-to-all op itself, which depends on pack ops
+    // add the all-to-all op itself, which depends on pack ops
     auto alltoall_ptr = std::make_unique<CommAllToAll>(precision,
                                                        desc.inArrayType,
                                                        send_offsets,
@@ -2569,14 +2514,6 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
                             return c == recv_counts[0];
                         });
 
-    std::cout << "+++ uniform_counts inside GlobalTransposeA2A" << std::endl;
-    std::cout << "+++ uniform_counts: rank [" << local_comm_rank << "] " << uniform_counts
-              << std::endl;
-    std::cout << "+++ send_counts: rank [" << local_comm_rank << "] : " << send_counts[0] << " "
-              << send_counts[1] << " " << send_counts[2] << " " << send_counts[3] << std::endl;
-    std::cout << "+++ recv_counts: rank [" << local_comm_rank << "] : " << recv_counts[0] << " "
-              << recv_counts[1] << " " << recv_counts[2] << " " << recv_counts[3] << std::endl;
-
     // add the all-to-all op itself, which depends on pack ops
     auto alltoall_ptr = std::make_unique<CommAllToAll>(precision,
                                                        desc.inArrayType,
@@ -2715,7 +2652,7 @@ inline int grid_kind(const std::array<int, 3>& g)
         return 2; // pencil
     if(n_ones == 0)
         return 3; // brick
-    return 0; // shouldn't happen
+    return 0;
 }
 
 inline const char* kind_str(int kind)
@@ -2927,21 +2864,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     {
         get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
-        if(local_comm_rank == 0)
-        {
-            for(const auto& grid : grids_sequence)
-            {
-                std::cout << "@@tranpose_plan [" << local_comm_rank << "]" << " {" << grid[0] << ","
-                          << grid[1] << "," << grid[2] << "} \n";
-            }
-
-            for(const auto& type : transpose_sequence)
-            {
-                std::cout << "@@transpose_sequence [" << local_comm_rank << "] "
-                          << transpose_type_str(type) << std::endl;
-            }
-        }
-
         pencil_to_pencil
             = std::all_of(transpose_sequence.begin(),
                           transpose_sequence.end(),
@@ -2996,11 +2918,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 }
             }
 
-            std::cout << "[Rank " << local_comm_rank << "] My pencil_neighbors: ";
-            for(auto r : pencil_neighbors)
-                std::cout << r << " ";
-            std::cout << std::endl;
-
             // create subcommunicator using MPI_Group (RAII)
             MPI_Group world_group;
             MPI_Comm_group(desc.mpi_comm, &world_group);
@@ -3021,12 +2938,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             {
                 pencil_comm       = MPI_Comm_wrapper_t::from_raw(tmp_comm);
                 valid_pencil_comm = true;
-
-                MPI_Comm_rank(pencil_comm, &pencil_local_rank);
-                MPI_Comm_size(pencil_comm, &pencil_comm_size);
-                std::cout << "[Rank " << local_comm_rank
-                          << "] pencil_local_rank = " << pencil_local_rank
-                          << " pencil_comm_size = " << pencil_comm_size << std::endl;
             }
             else
             {
@@ -3034,16 +2945,13 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             }
 
 
-            // allocate temp buffers for nextField
-            // std::vector<TempBufferLease> tempLeases;
-            // std::vector<BufferPtr> tempBufs(pencil_comm_size);
-
-            // Loop over the pencil_neighbors_vec (these are the global ranks in this subcomm)
+            // allocate temp buffers for nextField,
+            // loop over the pencil_neighbors_vec (these are the global ranks in this subcomm)
             std::vector<TempBufferLease> tempLeases;
             std::vector<BufferPtr> tempBufs(nextField.bricks.size());
             for(size_t b = 0; b < nextField.bricks.size(); ++b)
             {
-                // Allocate a buffer only if THIS global rank owns the brick.
+                // Allocate a buffer only if this global rank owns the brick.
                 if(nextField.bricks[b].location.comm_rank == local_comm_rank)
                 {
                     tempLeases.emplace_back(tempBuffers,
