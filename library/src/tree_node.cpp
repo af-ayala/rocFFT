@@ -912,7 +912,8 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 {
     std::cout<<"ExecuteAsync called " << std::endl;
 
-
+    // check that we have as many elems in our count/offset buffers as
+    // we have ranks
     const size_t num_ranks = plan->get_local_comm_size();
 
     std::cout << "[DEBUG][Rank " << local_comm_rank << "] num_ranks=" << num_ranks
@@ -922,9 +923,6 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             << " recvCounts.size()=" << recvCounts.size()
             << std::endl;
 
-    // check that we have as many elems in our count/offset buffers as
-    // we have ranks
-    const size_t num_ranks = plan->get_local_comm_size();
     if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
        || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
         throw std::runtime_error(
