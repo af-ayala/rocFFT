@@ -910,6 +910,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 rocfft_execution_info info,
                                 size_t                multiPlanIdx)
 {
+    std::cout<<"executed being called " << std::endl;
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
     const size_t num_ranks = plan->get_local_comm_size();
