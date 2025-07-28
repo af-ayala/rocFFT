@@ -914,12 +914,14 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
-    const size_t num_ranks;
-
-    if(subcomm)
-        MPI_Comm_size(subcomm, &num_ranks);
-    else
-        subcomm_size = plan->get_local_comm_size();   
+    size_t num_ranks = 0;
+    if(subcomm) {
+        int tmp_num_ranks = 0;
+        MPI_Comm_size(subcomm, &tmp_num_ranks);
+        num_ranks = static_cast<size_t>(tmp_num_ranks);
+    } else {
+        num_ranks = plan->get_local_comm_size();
+    }
 
     std::cout << "[DEBUG][Rank " << local_comm_rank << "] num_ranks=" << num_ranks
             << " sendOffsets.size()=" << sendOffsets.size()
