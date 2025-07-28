@@ -2967,10 +2967,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 }
             }
 
-
-            MPI_Barrier(desc.mpi_comm);
-
-            // perform transpose from currentField to nextField
+            // plan transpose from currentField to nextField
             std::vector<size_t> transposeItems;
             GlobalTranspose(elem_size,
                             currentField,
@@ -2985,9 +2982,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             currentField       = nextField;
             currentBufs        = tempBufs;
             currentAntecedents = transposeItems;
-            MPI_Barrier(desc.mpi_comm);
 
-            // once data is transposed, perform intermediate FFT
+            // once data is transposed, plan intermediate FFT
             if(!fft_done[pencil_axis])
             {
                 std::vector<size_t> fftItems;
@@ -3001,7 +2997,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 currentAntecedents    = fftItems;
             }
         }
-        MPI_Barrier(desc.mpi_comm);
     }
     // default general decomposition without sub-communicators
     else
