@@ -411,34 +411,4 @@ bool PlanPowX(ExecPlan& execPlan);
 bool GetTuningKernelInfo(ExecPlan& execPlan);
 void RuntimeCompilePlan(ExecPlan& execPlan);
 
-// helpers for grid partition
-template <typename T, size_t N>
-bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b)
-{
-    for(size_t i = 0; i < N; ++i)
-        if(a[i] != b[i])
-            return false;
-    return true;
-}
-template <typename T>
-void push_unique(std::vector<T>& vec, const T& val)
-{
-    if(std::find(vec.begin(), vec.end(), val) == vec.end())
-        vec.push_back(val);
-}
-// find all pairs (a,b) such that a*b=prod and a>=1, b>=1
-std::vector<std::pair<int, int>> factor_pairs(int prod)
-{
-    std::vector<std::pair<int, int>> result;
-    for(int a = 1; a <= prod; ++a)
-    {
-        if(prod % a == 0)
-        {
-            int b = prod / a;
-            result.emplace_back(a, b);
-        }
-    }
-    return result;
-}
-
 #endif // PLAN_H

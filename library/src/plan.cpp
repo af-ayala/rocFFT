@@ -2687,6 +2687,27 @@ inline const char* transpose_type_str(transpose_type t)
     }
 }
 
+template <typename T>
+void push_unique_grid(std::vector<T>& vec, const T& val)
+{
+    if(std::find(vec.begin(), vec.end(), val) == vec.end())
+        vec.push_back(val);
+}
+// find all pairs (a,b) such that a*b=prod and a>=1, b>=1
+std::vector<std::pair<int, int>> get_proc_candidates(int prod)
+{
+    std::vector<std::pair<int, int>> result;
+    for(int a = 1; a <= prod; ++a)
+    {
+        if(prod % a == 0)
+        {
+            int b = prod / a;
+            result.emplace_back(a, b);
+        }
+    }
+    return result;
+}
+
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
                         const std::array<int, 3>&        output_grid,
                         std::vector<std::array<int, 3>>& plan,
@@ -2702,7 +2723,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     // for each axis, generate the pencil with 1 in that axis, largest and most balanced possible
     for(int pos = 0; pos < 3; ++pos)
     {
-        auto pairs = factor_pairs(prod);
+        auto pairs = get_proc_candidates(prod);
         // choose the pair with minimal |a-b| (most balanced)
         int best_a = 1, best_b = prod, min_diff = prod;
         for(const auto& [a, b] : pairs)
@@ -2720,8 +2741,8 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
         for(int i = 0; i < 3; ++i)
             grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? best_a : best_b);
 
-        if(!array_equal(grid, input_grid) && !array_equal(grid, output_grid))
-            push_unique(pencils, grid);
+    if ((grid != input_grid) && (grid != output_grid))
+        push_unique_grid(pencils, grid);
     }
 
     // tranpose plan: input -> [all pencils] -> output
