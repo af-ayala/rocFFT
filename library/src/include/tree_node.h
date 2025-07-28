@@ -1379,8 +1379,8 @@ struct CommAllToAll : public MultiPlanItem
                  const std::vector<size_t>& _recvCounts,
                  BufferPtr                  _sendBuf,
                  BufferPtr                  _recvBuf,
-                 bool                       uniformCounts, 
-                 MPI_Comm_wrapper_t subcomm = {})
+                 bool                       uniformCounts,
+                 MPI_Comm_wrapper_t         subcomm = {})
         : precision(_precision)
         , arrayType(_arrayType)
         , sendOffsets(_sendOffsets)
@@ -1389,7 +1389,7 @@ struct CommAllToAll : public MultiPlanItem
         , recvCounts(_recvCounts)
         , sendBuf(_sendBuf)
         , recvBuf(_recvBuf)
-        , uniform_counts(uniformCounts) 
+        , uniform_counts(uniformCounts)
         , subcomm(std::move(subcomm))
     {
         // Currently MPI interface uses 32-bit signed ints, so assert
@@ -1443,7 +1443,7 @@ struct CommAllToAll : public MultiPlanItem
     {
         uniform_count_inside_subcomm = val;
     }
-    
+
     void set_uniform_count(bool val)
     {
         uniform_counts = val;

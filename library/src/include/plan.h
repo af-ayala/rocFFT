@@ -374,7 +374,7 @@ private:
                                    const std::vector<size_t>& inputAntecedents,
                                    std::vector<size_t>&       outputItems,
                                    const std::string&         itemGroup,
-                                   MPI_Comm_wrapper_t&&       subcomm = MPI_Comm_wrapper_t{});                            
+                                   MPI_Comm_wrapper_t&&       subcomm = MPI_Comm_wrapper_t{});
 
     // fallback case for global transpose that uses point-to-point
     // communications, for when all-to-all isn't possible.
@@ -577,6 +577,5 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     for(size_t i = 1; i < plan.size(); ++i)
         trans_types.push_back(get_transpose_type(plan[i - 1], plan[i]));
 }
-
 
 #endif // PLAN_H

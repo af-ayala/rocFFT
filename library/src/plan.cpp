@@ -2297,7 +2297,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
         }
     }
 
-    // check uniformity for alltoall within the subcomm 
+    // check uniformity for alltoall within the subcomm
     bool uniform_counts = std::all_of(send_counts.begin(),
                                       send_counts.end(),
                                       [&](size_t c) { return c == send_counts[0]; })
@@ -2668,7 +2668,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
-// #ifdef ROCFFT_MPI_ENABLE
+    // #ifdef ROCFFT_MPI_ENABLE
     // track which dimensions have already been FFTed
     std::vector<int> fft_done(rank, 0);
     for(auto d : contiguousInputDims)
@@ -2774,11 +2774,10 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 throw std::runtime_error("Failed to create a valid Pencil sub-communicator");
             }
 
-
             // allocate temp buffers for nextField,
             // loop over the pencil_neighbors_vec (these are the global ranks in this subcomm)
             std::vector<TempBufferLease> tempLeases;
-            std::vector<BufferPtr> tempBufs(nextField.bricks.size());
+            std::vector<BufferPtr>       tempBufs(nextField.bricks.size());
             for(size_t b = 0; b < nextField.bricks.size(); ++b)
             {
                 // Allocate a buffer only if this global rank owns the brick.
@@ -2830,7 +2829,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     }
     // default general decomposition without sub-communicators
     else
-// #endif
+    // #endif
     {
         // transpose non-contiguous dims to be contiguous and
         // transform them too

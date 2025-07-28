@@ -286,9 +286,15 @@ class MPI_Comm_wrapper_t
 {
 public:
     MPI_Comm_wrapper_t() {}
-    static MPI_Comm_wrapper_t from_raw(int) { return MPI_Comm_wrapper_t{}; }
+    static MPI_Comm_wrapper_t from_raw(int)
+    {
+        return MPI_Comm_wrapper_t{};
+    }
     // allow conversion to bool (always false)
-    operator bool() const { return false; }
+    operator bool() const
+    {
+        return false;
+    }
 };
 
 #endif
