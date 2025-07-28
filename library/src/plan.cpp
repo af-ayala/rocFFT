@@ -2606,7 +2606,6 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
         std::cout << std::endl;
     }
 
-    // create temporary grids consistent for internal rank_to_coords()
     // valid also for 1D and 2D FFTs
     std::array<int, 3> in_grid  = {1, 1, 1};
     std::array<int, 3> out_grid = {1, 1, 1};
