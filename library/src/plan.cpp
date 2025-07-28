@@ -3035,24 +3035,30 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
 
             // allocate temp buffers for nextField
-            std::vector<TempBufferLease> tempLeases;
-            std::vector<BufferPtr> tempBufs(pencil_comm_size);
+            // std::vector<TempBufferLease> tempLeases;
+            // std::vector<BufferPtr> tempBufs(pencil_comm_size);
 
             // Loop over the pencil_neighbors_vec (these are the global ranks in this subcomm)
-            for(int i = 0; i < pencil_comm_size; ++i) {
-                int global_rank = pencil_neighbors_vec[i];
-                // Only allocate if this process is actually part of the subcomm (should always be true)
-                if(global_rank == local_comm_rank) {
+            std::vector<TempBufferLease> tempLeases;
+            std::vector<BufferPtr> tempBufs(nextField.bricks.size());
+            for(size_t b = 0; b < nextField.bricks.size(); ++b)
+            {
+                // Allocate a buffer only if THIS global rank owns the brick.
+                if(nextField.bricks[b].location.comm_rank == local_comm_rank)
+                {
                     tempLeases.emplace_back(tempBuffers,
                                             local_comm_rank,
-                                            nextField.bricks[i].location,
-                                            nextField.bricks[i].count_elems(),
+                                            nextField.bricks[b].location,
+                                            nextField.bricks[b].count_elems(),
                                             elem_size);
-                    tempBufs[i] = BufferPtr::temp(tempLeases.back().data());
-                } else {
-                    tempBufs[i] = BufferPtr(); // or leave as nullptr/empty
+                    tempBufs[b] = BufferPtr::temp(tempLeases.back().data());
+                }
+                else
+                {
+                    tempBufs[b] = BufferPtr();
                 }
             }
+
 
             MPI_Barrier(desc.mpi_comm);
 
