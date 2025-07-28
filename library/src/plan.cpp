@@ -1911,6 +1911,65 @@ void rocfft_plan_t::C2CField(const rocfft_field_t&      field,
     }
 }
 
+// Return a transposed field layout that makes the specified
+// dimension contiguous on all bricks.  Length covers the whole field
+// and includes batch dimension.  Input field is provided so we can
+// distribute output bricks among the same devices that the input
+// bricks are distributed to.
+static rocfft_field_t MakeFieldDimContiguous(const rocfft_field_t&      field,
+                                             const std::vector<size_t>& length,
+                                             size_t                     dimIdx)
+{
+    rocfft_field_t out = field;
+    // find first dim that's not the one we're making contiguous and
+    // is at least as big as the number of bricks - we can split on
+    // that dimension
+    std::optional<size_t> splitDim;
+    for(size_t dim = 0; dim < length.size(); ++dim)
+    {
+        if(dim != dimIdx && length[dim] >= field.bricks.size())
+            splitDim = dim;
+    }
+    if(!splitDim)
+        throw std::runtime_error("not enough lengths to split to make dim contiguous");
+
+    for(size_t i = 0; i < out.bricks.size(); ++i)
+    {
+        auto& outBrick = out.bricks[i];
+
+        // start lower and upper at origin and max, respectively
+        std::fill(outBrick.lower.begin(), outBrick.lower.end(), 0);
+        outBrick.upper = length;
+
+        // divide up the split dim
+        outBrick.lower[*splitDim] = length[*splitDim] / out.bricks.size() * i;
+        // last brick needs to include the whole length
+        if(i == out.bricks.size() - 1)
+            outBrick.upper[*splitDim] = length[*splitDim];
+        else
+            outBrick.upper[*splitDim] = length[*splitDim] / out.bricks.size() * (i + 1);
+
+        auto brickLength = outBrick.length();
+
+        // set strides - contiguous dim has stride 1
+        size_t dist             = 1;
+        outBrick.stride[dimIdx] = dist;
+        dist *= brickLength[dimIdx];
+        // split dim is contiguous after that
+        outBrick.stride[*splitDim] = dist;
+        dist *= brickLength[*splitDim];
+        // fill in remaining strides
+        for(size_t s = 0; s < outBrick.stride.size(); ++s)
+        {
+            if(s == dimIdx || s == *splitDim)
+                continue;
+            outBrick.stride[s] = dist;
+            dist *= brickLength[s];
+        }
+    }
+    return out;
+}
+
 void rocfft_plan_t::GlobalTranspose(size_t                     elem_size,
                                     const rocfft_field_t&      inField,
                                     const rocfft_field_t&      outField,

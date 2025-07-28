@@ -430,67 +430,37 @@ inline std::array<int, 3> infer_grid_from_bricks(const std::vector<rocfft_brick_
     return {nx, ny, nz};
 }
 
-
-// Return a transposed field layout that makes the specified
-// dimension contiguous on all bricks.  Length covers the whole field
-// and includes batch dimension.  Input field is provided so we can
-// distribute output bricks among the same devices that the input
-// bricks are distributed to.
-static rocfft_field_t MakeFieldDimContiguous(const rocfft_field_t&      field,
-                                             const std::vector<size_t>& length,
-                                             size_t                     dimIdx)
+// helpers for grid partition
+template <typename T, size_t N>
+bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b)
 {
-    rocfft_field_t out = field;
-    // find first dim that's not the one we're making contiguous and
-    // is at least as big as the number of bricks - we can split on
-    // that dimension
-    std::optional<size_t> splitDim;
-    for(size_t dim = 0; dim < length.size(); ++dim)
+    for(size_t i = 0; i < N; ++i)
+        if(a[i] != b[i])
+            return false;
+    return true;
+}
+template <typename T>
+void push_unique(std::vector<T>& vec, const T& val)
+{
+    if(std::find(vec.begin(), vec.end(), val) == vec.end())
+        vec.push_back(val);
+}
+// find all pairs (a,b) such that a*b=prod and a>=1, b>=1
+std::vector<std::pair<int, int>> factor_pairs(int prod)
+{
+    std::vector<std::pair<int, int>> result;
+    for(int a = 1; a <= prod; ++a)
     {
-        if(dim != dimIdx && length[dim] >= field.bricks.size())
-            splitDim = dim;
-    }
-    if(!splitDim)
-        throw std::runtime_error("not enough lengths to split to make dim contiguous");
-
-    for(size_t i = 0; i < out.bricks.size(); ++i)
-    {
-        auto& outBrick = out.bricks[i];
-
-        // start lower and upper at origin and max, respectively
-        std::fill(outBrick.lower.begin(), outBrick.lower.end(), 0);
-        outBrick.upper = length;
-
-        // divide up the split dim
-        outBrick.lower[*splitDim] = length[*splitDim] / out.bricks.size() * i;
-        // last brick needs to include the whole length
-        if(i == out.bricks.size() - 1)
-            outBrick.upper[*splitDim] = length[*splitDim];
-        else
-            outBrick.upper[*splitDim] = length[*splitDim] / out.bricks.size() * (i + 1);
-
-        auto brickLength = outBrick.length();
-
-        // set strides - contiguous dim has stride 1
-        size_t dist             = 1;
-        outBrick.stride[dimIdx] = dist;
-        dist *= brickLength[dimIdx];
-        // split dim is contiguous after that
-        outBrick.stride[*splitDim] = dist;
-        dist *= brickLength[*splitDim];
-        // fill in remaining strides
-        for(size_t s = 0; s < outBrick.stride.size(); ++s)
+        if(prod % a == 0)
         {
-            if(s == dimIdx || s == *splitDim)
-                continue;
-            outBrick.stride[s] = dist;
-            dist *= brickLength[s];
+            int b = prod / a;
+            result.emplace_back(a, b);
         }
     }
-    return out;
+    return result;
 }
 
-
+// get transpose plan structure
 inline int grid_kind(const std::array<int, 3>& g)
 {
     int n_ones = 0;
@@ -504,17 +474,6 @@ inline int grid_kind(const std::array<int, 3>& g)
     if(n_ones == 0)
         return 3; // brick
     return 0;
-}
-
-inline const char* kind_str(int kind)
-{
-    if(kind == 1)
-        return "slab";
-    if(kind == 2)
-        return "pencil";
-    if(kind == 3)
-        return "brick";
-    return "?";
 }
 
 inline transpose_type get_transpose_type(const std::array<int, 3>& from,
@@ -571,37 +530,6 @@ inline const char* transpose_type_str(transpose_type t)
     }
 }
 
-
-// helpers for grid partition
-template <typename T, size_t N>
-bool array_equal(const std::array<T, N>& a, const std::array<T, N>& b)
-{
-    for(size_t i = 0; i < N; ++i)
-        if(a[i] != b[i])
-            return false;
-    return true;
-}
-template <typename T>
-void push_unique(std::vector<T>& vec, const T& val)
-{
-    if(std::find(vec.begin(), vec.end(), val) == vec.end())
-        vec.push_back(val);
-}
-// find all pairs (a,b) such that a*b=prod and a>=1, b>=1
-std::vector<std::pair<int, int>> factor_pairs(int prod)
-{
-    std::vector<std::pair<int, int>> result;
-    for(int a = 1; a <= prod; ++a)
-    {
-        if(prod % a == 0)
-        {
-            int b = prod / a;
-            result.emplace_back(a, b);
-        }
-    }
-    return result;
-}
-
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
                         const std::array<int, 3>&        output_grid,
                         std::vector<std::array<int, 3>>& plan,
@@ -639,7 +567,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
             push_unique(pencils, grid);
     }
 
-    // tranpose plan: input → [all pencils] → output
+    // tranpose plan: input -> [all pencils] -> output
     plan.push_back(input_grid);
     for(const auto& g : pencils)
         plan.push_back(g);
