@@ -1892,7 +1892,6 @@ void rocfft_plan_t::C2CField(const rocfft_field_t&      field,
 
         for(auto dimIdx : fftDims)
         {
-            std::cout << "@@@@@ computing FFT in the dimension: " << dimIdx << std::endl;
             auto transformItem              = C2CBrickOneDimension(*this,
                                                       dimIdx,
                                                       inBrick.location,
@@ -2394,7 +2393,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
 
     // subsequent operations can depend on the unpack ops
     outputItems = unpack_ops;
-#endif    
+#endif
 }
 
 void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
@@ -2944,6 +2943,10 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
 
+    auto lengthsWithBatch = lengths;
+    lengthsWithBatch.push_back(batch);
+
+#ifdef ROCFFT_MPI_ENABLE
     // track which dimensions have already been FFTed
     std::cout << "rank = " << rank << std::endl;
     std::vector<int> fft_done(rank, 0);
@@ -2966,7 +2969,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     bool pencil_to_pencil = false;
     // plan transposition steps
-    if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && rank==3)
+    if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && rank == 3)
     {
         get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
@@ -2991,14 +2994,11 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                           [](transpose_type t) { return t == transpose_type::pencil_to_pencil; });
     }
 
-    auto lengthsWithBatch = lengths;
-    lengthsWithBatch.push_back(batch);
-
     rocfft_field_t         currentField       = desc.inFields.front();
     std::vector<BufferPtr> currentBufs        = inputFFTBufs;
     std::vector<size_t>    currentAntecedents = inputFFTItems;
 
-    // optimized pencil-to-pencil transform using sub-communicators
+    // using MPI sub-communicators for optimized pencil-to-pencil
     if(pencil_to_pencil)
     {
         if(local_comm_rank == 0)
@@ -3152,10 +3152,9 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     }
     // default general decomposition without sub-communicators
     else
+#endif
     {
-        std::cout << "---- will rely on default " << std::endl;
-        // default slab-based intermediate decomposition
-        // next, transpose non-contiguous dims to be contiguous and
+        // transpose non-contiguous dims to be contiguous and
         // transform them too
         std::vector<BufferPtr>       transposeInputBufs = inputFFTBufs;
         std::vector<TempBufferLease> transposeOutputTemp;
@@ -3781,8 +3780,6 @@ rocfft_status rocfft_plan_create_internal(rocfft_plan                   plan,
                 // If optimized multi-device was not possible (either because
                 // multi-device was not requested, or we can't optimize for
                 // that case), fall back to single-device plan
-
-                std::cout << "build optimize was not possible " << std::endl;
 
                 NodeMetaData rootPlanData(nullptr);
                 set_rootplan_params(plan, rootPlanData);

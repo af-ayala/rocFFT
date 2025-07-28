@@ -1486,12 +1486,12 @@ private:
     // send/receive buffers
     const BufferPtr sendBuf;
     const BufferPtr recvBuf;
-
+    
+#ifdef ROCFFT_MPI_ENABLE
     // check uniform counts for using AlltoAll instead of AlltoAllv
     bool uniform_counts = false;
 
     // subcomm for optimizations whenever possible
-#ifdef ROCFFT_MPI_ENABLE
     MPI_Comm_wrapper_t subcomm;
 #endif
 };
