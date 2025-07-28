@@ -2132,6 +2132,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                               const std::string&         itemGroup,
                                               MPI_Comm_wrapper_t&&       subcomm)
 {
+#ifdef ROCFFT_MPI_ENABLE
     int subcomm_rank = -1, subcomm_size = -1;
     MPI_Comm_rank(subcomm, &subcomm_rank);
     MPI_Comm_size(subcomm, &subcomm_size);
@@ -2393,6 +2394,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
 
     // subsequent operations can depend on the unpack ops
     outputItems = unpack_ops;
+#endif    
 }
 
 void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
