@@ -910,19 +910,30 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 rocfft_execution_info info,
                                 size_t                multiPlanIdx)
 {
-    std::cout<<"executed being called 11" << std::endl;
+    std::cout<<"ExecuteAsync called " << std::endl;
+
+
+    const size_t num_ranks = plan->get_local_comm_size();
+
+    std::cout << "[DEBUG][Rank " << local_comm_rank << "] num_ranks=" << num_ranks
+            << " sendOffsets.size()=" << sendOffsets.size()
+            << " sendCounts.size()=" << sendCounts.size()
+            << " recvOffsets.size()=" << recvOffsets.size()
+            << " recvCounts.size()=" << recvCounts.size()
+            << std::endl;
+
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
-    // const size_t num_ranks = plan->get_local_comm_size();
-    // if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
-    //    || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
-    //     throw std::runtime_error(
-    //         "CommAllToAll: number of counts/offsets does not match number of ranks");
+    const size_t num_ranks = plan->get_local_comm_size();
+    if(sendOffsets.size() != num_ranks || sendCounts.size() != num_ranks
+       || recvOffsets.size() != num_ranks || recvCounts.size() != num_ranks)
+        throw std::runtime_error(
+            "CommAllToAll: number of counts/offsets does not match number of ranks");
 
-    // if(LOG_PLAN_ENABLED())
-    // {
-    //     log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
-    // }
+    if(LOG_PLAN_ENABLED())
+    {
+        log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
+    }
 
     std::cout<<"berfore check  " << std::endl;
 
@@ -932,7 +943,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         std::cout << "NADA sub comm kia " << std::endl;
 
 
-#ifdef ROCFFT_MPI_ENABLE
+// #ifdef ROCFFT_MPI_ENABLE
 
     int global_rank = -1;
     MPI_Comm_rank(plan->desc.mpi_comm, &global_rank);
@@ -943,7 +954,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     if(subcomm)
     {
         if(LOG_PLAN_ENABLED())
-            log_plan("Using MPI_Ialltoall\n");
+            log_plan("Using MPI_Ialltoall with sub-communicators\n");
 
         std::cout << "if as subcomm " << std::endl;
         int comm_rank = -1, comm_size = -1;
@@ -1093,9 +1104,9 @@ std::cout << "[Rank " << comm_rank << "] recvBuf ptr: " << recv_ptr
 
     comm_requests.push_back(request);
 
-#else
-    throw std::runtime_error("CommAllToAll not implemented");
-#endif    
+// #else
+//     throw std::runtime_error("CommAllToAll not implemented");
+// #endif    
 }
 
 void CommAllToAll::Wait()
