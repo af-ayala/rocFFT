@@ -2830,7 +2830,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         inputFFTBufs.emplace_back(BufferPtr::temp(inputTemp.back().data()));
     }
 
-    // perform FFTs along already contiguous dimensions
+    // plan FFTs along already contiguous dimensions
     std::vector<size_t> inputFFTItems;
     C2CField(
         desc.inFields.front(), contiguousInputDims, inputBufs, inputFFTBufs, {}, inputFFTItems);
@@ -2877,7 +2877,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // using MPI sub-communicators for optimized pencil-to-pencil
     if(pencil_to_pencil)
     {
-        // perform global transposes and compute local FFTs
+        // plan global transposes and local FFTs
         for(size_t i = 0; i < transpose_sequence.size(); ++i)
         {
             // get next grid, note that transpose_sequence size is one less than grids_sequence
