@@ -915,7 +915,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
 
-    // #ifdef ROCFFT_MPI_ENABLE
+    #ifdef ROCFFT_MPI_ENABLE
 
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
@@ -1069,9 +1069,9 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
 
     comm_requests.push_back(request);
 
-    // #else
-    //     throw std::runtime_error("CommAllToAll not implemented");
-    // #endif
+    #else
+        throw std::runtime_error("CommAllToAll not implemented");
+    #endif
 }
 
 void CommAllToAll::Wait()
