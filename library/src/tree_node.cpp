@@ -923,6 +923,12 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
 
+    if(subcomm)
+        std::cout << " sub comm kia " << std::endl;
+    else
+        std::cout << "NADA sub comm kia " << std::endl;
+
+
 #ifdef ROCFFT_MPI_ENABLE
 
     int global_rank = -1;
