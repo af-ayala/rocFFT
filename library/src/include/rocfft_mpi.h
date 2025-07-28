@@ -281,6 +281,17 @@ inline MPI_Datatype rocfft_type_to_mpi_type(rocfft_precision precision, rocfft_a
     }
 }
 
+#else
+
+class MPI_Comm_wrapper_t
+{
+public:
+    MPI_Comm_wrapper_t() {}
+    static MPI_Comm_wrapper_t from_raw(int) { return MPI_Comm_wrapper_t{}; }
+    // Allow conversion to bool (always false)
+    operator bool() const { return false; }
+};
+
 #endif
 
 #endif

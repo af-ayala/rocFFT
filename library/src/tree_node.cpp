@@ -904,7 +904,6 @@ void CommGather::Print(rocfft_ostream& os, const int indent) const
     }
 }
 
-int  alan_kia = 1;
 void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 void*                 in_buffer[],
                                 void*                 out_buffer[],
@@ -924,8 +923,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
 
-    std::cout << "ExecuteAsync called " << alan_kia << " times.\n";
-    alan_kia++; // Increment the global counter
+#ifdef ROCFFT_MPI_ENABLE
 
     int global_rank = -1;
     MPI_Comm_rank(plan->desc.mpi_comm, &global_rank);
@@ -1057,6 +1055,10 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     }
 
     comm_requests.push_back(request);
+
+#else
+    throw std::runtime_error("CommAllToAll not implemented");
+#endif    
 }
 
 void CommAllToAll::Wait()

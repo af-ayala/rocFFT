@@ -2122,7 +2122,6 @@ void rocfft_plan_t::GlobalTransposeP2P(size_t                     elem_size,
     }
 }
 
-int  alan_counter = 1;
 void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_size,
                                               const rocfft_field_t&      inField,
                                               const rocfft_field_t&      outField,
@@ -2133,10 +2132,6 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                               const std::string&         itemGroup,
                                               MPI_Comm_wrapper_t&&       subcomm)
 {
-
-    std::cout << "GlobalTransposeA2ASubcomm called " << alan_counter << " times.\n";
-    alan_counter++; // Increment the global counter
-
     int subcomm_rank = -1, subcomm_size = -1;
     MPI_Comm_rank(subcomm, &subcomm_rank);
     MPI_Comm_size(subcomm, &subcomm_size);
@@ -2969,7 +2964,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
 
     bool pencil_to_pencil = false;
     // plan transposition steps
-    if(num_split_dims_in >= 2 && num_split_dims_out >= 2)
+    if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && rank==3)
     {
         get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
