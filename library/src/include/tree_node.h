@@ -1365,10 +1365,8 @@ private:
 
 // Macro for sub-communicator
 #ifdef ROCFFT_MPI_ENABLE
-#define ROCFFT_COMMALLTOALL_SUBCOMM_ARG , MPI_Comm_wrapper_t subcomm = {}
 #define ROCFFT_COMMALLTOALL_SUBCOMM_INIT , subcomm(std::move(subcomm))
 #else
-#define ROCFFT_COMMALLTOALL_SUBCOMM_ARG
 #define ROCFFT_COMMALLTOALL_SUBCOMM_INIT
 #endif
 
@@ -1388,8 +1386,8 @@ struct CommAllToAll : public MultiPlanItem
                  const std::vector<size_t>& _recvCounts,
                  BufferPtr                  _sendBuf,
                  BufferPtr                  _recvBuf,
-                 bool                       uniformCounts
-                 ROCFFT_COMMALLTOALL_SUBCOMM_ARG)
+                 bool                       uniformCounts, 
+                 MPI_Comm_wrapper_t subcomm = {})
         : precision(_precision)
         , arrayType(_arrayType)
         , sendOffsets(_sendOffsets)
@@ -1398,8 +1396,8 @@ struct CommAllToAll : public MultiPlanItem
         , recvCounts(_recvCounts)
         , sendBuf(_sendBuf)
         , recvBuf(_recvBuf)
-        , uniform_counts(uniformCounts)
-        ROCFFT_COMMALLTOALL_SUBCOMM_INIT
+        , uniform_counts(uniformCounts), 
+        , subcomm(std::move(subcomm))
     {
         // Currently MPI interface uses 32-bit signed ints, so assert
         // that our counts/offsets don't overflow that type
@@ -1486,14 +1484,12 @@ private:
     // send/receive buffers
     const BufferPtr sendBuf;
     const BufferPtr recvBuf;
-    
-#ifdef ROCFFT_MPI_ENABLE
+
     // check uniform counts for using AlltoAll instead of AlltoAllv
     bool uniform_counts = false;
 
     // subcomm for optimizations whenever possible
     MPI_Comm_wrapper_t subcomm;
-#endif
 };
 
 // Tree-structured FFT plan.  This is specific to a single device on
