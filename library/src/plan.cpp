@@ -2354,7 +2354,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
               << std::endl;
     std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2]
               << std::endl;
-    
+
     std::cout << "[Rank " << my_global_rank << "] (subcomm) uniform_counts: " << uniform_counts
               << std::endl;
     std::cout << "[Rank " << my_global_rank << "] (subcomm) send_counts: ";
