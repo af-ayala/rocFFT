@@ -910,7 +910,7 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
                                 rocfft_execution_info info,
                                 size_t                multiPlanIdx)
 {
-    std::cout<<"executed being called " << std::endl;
+    std::cout<<"executed being called 11" << std::endl;
     // check that we have as many elems in our count/offset buffers as
     // we have ranks
     const size_t num_ranks = plan->get_local_comm_size();
@@ -923,6 +923,8 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
     {
         log_plan("CommAllToAll: deciding between MPI_Ialltoall and MPI_Ialltoallv\n");
     }
+
+    std::cout<<"berfore check  " << std::endl;
 
     if(subcomm)
         std::cout << " sub comm kia " << std::endl;
