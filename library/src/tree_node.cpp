@@ -950,6 +950,34 @@ void CommAllToAll::ExecuteAsync(const rocfft_plan     plan,
             throw std::runtime_error(
                 "CommAllToAll::ExecuteAsync: non-uniform counts in pencil subcomm!");
 
+        void* send_ptr = sendBuf.get(in_buffer, out_buffer, comm_rank);
+        void* recv_ptr = recvBuf.get(in_buffer, out_buffer, comm_rank);
+
+        std::cout << "sendBuf ptr: " << send_ptr << ", recvBuf ptr: " << recv_ptr << std::endl;
+        if(!send_ptr || !recv_ptr) {
+            std::cerr << "Buffer pointer(s) are null!" << std::endl;
+}
+
+// Suppose you have these available:
+size_t send_count_elems = sendCounts[comm_rank];  // or sendCounts[0], if uniform
+size_t recv_count_elems = recvCounts[comm_rank];
+size_t elem_size = element_size(precision, arrayType);
+
+size_t send_count_bytes = send_count_elems * elem_size;
+size_t recv_count_bytes = recv_count_elems * elem_size;
+
+// Total buffer size, if you have one buffer for all ranks
+size_t total_send_buf_bytes = std::accumulate(sendCounts.begin(), sendCounts.end(), 0ULL) * elem_size;
+size_t total_recv_buf_bytes = std::accumulate(recvCounts.begin(), recvCounts.end(), 0ULL) * elem_size;
+
+std::cout << "[Rank " << comm_rank << "] sendBuf ptr: " << send_ptr
+          << " (" << total_send_buf_bytes << " bytes total, "
+          << send_count_bytes << " bytes per partner)" << std::endl;
+std::cout << "[Rank " << comm_rank << "] recvBuf ptr: " << recv_ptr
+          << " (" << total_recv_buf_bytes << " bytes total, "
+          << recv_count_bytes << " bytes per partner)" << std::endl;
+
+
         // In subcomm: sendCounts, recvCounts, etc are sized for comm_size, indexed by comm_rank
         const int send_count_bytes = static_cast<int>(uniform_count_inside_subcomm * elem_size);
 

@@ -2133,6 +2133,8 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                               MPI_Comm_wrapper_t&&       subcomm)
 {
 #ifdef ROCFFT_MPI_ENABLE
+    std::cout << "called GlobalTransposeA2ASubcomm " << std::endl;
+
     int subcomm_rank = -1, subcomm_size = -1;
     MPI_Comm_rank(subcomm, &subcomm_rank);
     MPI_Comm_size(subcomm, &subcomm_size);
@@ -2297,20 +2299,6 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
         }
     }
 
-    std::array<int, 3> in_grid  = {1, 1, 1};
-    std::array<int, 3> out_grid = {1, 1, 1};
-
-    if(!inField.bricks.empty())
-        in_grid = infer_grid_from_bricks(inField.bricks);
-
-    if(!outField.bricks.empty())
-        out_grid = infer_grid_from_bricks(outField.bricks);
-
-    std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2]
-              << std::endl;
-    std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2]
-              << std::endl;
-
     // Check uniformity *within the subcomm* for alltoall
     bool uniform_counts = std::all_of(send_counts.begin(),
                                       send_counts.end(),
@@ -2321,7 +2309,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
 
     size_t uniform_count_inside_subcomm = 0;
     if(uniform_counts)
-        uniform_count_inside_subcomm = send_counts[0]; // Use for MPI_Ialltoall
+        uniform_count_inside_subcomm = send_counts[0];
     else
         throw std::runtime_error("Non-uniform send_counts in pencil subcomm!");
 
@@ -2356,7 +2344,17 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
         std::cout << std::endl;
     }
 
-    // Print diagnostics
+    std::array<int, 3> in_grid;
+    std::array<int, 3> out_grid;
+    if(!inField.bricks.empty())
+        in_grid = infer_grid_from_bricks(inField.bricks);
+    if(!outField.bricks.empty())
+        out_grid = infer_grid_from_bricks(outField.bricks);
+    std::cout << "input grid: " << in_grid[0] << " " << in_grid[1] << " " << in_grid[2]
+              << std::endl;
+    std::cout << "output grid: " << out_grid[0] << " " << out_grid[1] << " " << out_grid[2]
+              << std::endl;
+    
     std::cout << "[Rank " << my_global_rank << "] (subcomm) uniform_counts: " << uniform_counts
               << std::endl;
     std::cout << "[Rank " << my_global_rank << "] (subcomm) send_counts: ";
@@ -2957,9 +2955,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // using MPI sub-communicators for optimized pencil-to-pencil
     if(pencil_to_pencil)
     {
-        if(local_comm_rank == 0)
-            std::cout << "performing pencil_to_pencil " << std::endl;
-
         // perform global transposes and compute local FFTs
         for(size_t i = 0; i < transpose_sequence.size(); ++i)
         {
@@ -2988,26 +2983,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             else
                 nextField = MakeFieldWithPencilSplit(
                     currentField, lengthsWithBatch, split_axes, split_sizes);
-
-            if(local_comm_rank == 0)
-            {
-                std::cout << "___*___ nextField bricks:" << std::endl;
-                for(const auto& b : nextField.bricks)
-                {
-                    std::cout << "  lower: ";
-                    for(auto v : b.lower)
-                        std::cout << v << " ";
-                    std::cout << "  upper: ";
-                    for(auto v : b.upper)
-                        std::cout << v << " ";
-                    std::cout << "  rank: " << b.location.comm_rank;
-                    std::cout << "  dev: " << b.location.device;
-                    std::cout << std::endl;
-                }
-                std::array<int, 3> nf_grid = infer_grid_from_bricks(nextField.bricks);
-                std::cout << "___*___  nextField grid: " << nf_grid[0] << " " << nf_grid[1] << " "
-                          << nf_grid[2] << std::endl;
-            }
 
             // allocate temp buffers for nextField
             std::vector<TempBufferLease> tempLeases;
