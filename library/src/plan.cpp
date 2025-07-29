@@ -2862,6 +2862,17 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     std::vector<BufferPtr> currentBufs        = inputFFTBufs;
     std::vector<size_t>    currentAntecedents = inputFFTItems;
 
+
+std::cout << " batch is = " << batch << std::endl;
+for(const auto& type : transpose_sequence)
+{
+    std::cout << "@@transpose_sequence [" << local_comm_rank << "] "
+              << transpose_type_str(type) << std::endl;
+}
+
+
+
+
     // using MPI sub-communicators for optimized pencil-to-pencil
     if(pencil_to_pencil && batch == 1)
     {
