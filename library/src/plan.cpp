@@ -2844,7 +2844,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && rank == 3)
     {
 
-        // *** DEBUG HERE ***** 
         get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
         pencil_to_pencil = std::all_of(
@@ -2854,8 +2853,9 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 return t == std::make_pair(grid_layout::pencil, grid_layout::pencil);
             });
 
+        // *** DEBUG HERE ***** 
         std::cout << "debugging pencil_to_pencil = " << pencil_to_pencil << std::endl;
-        std::array<int,3> in_grid222{4,8,4}, out_grid222{8,4,8};
+        std::array<int,3> in_grid222{4,8,4}, out_grid222{8,4,4};
         std::vector<std::array<int,3>> grids_sequence222;
         std::vector<transpose_type> transpose_sequence222;
         get_transpose_plan(in_grid222, out_grid222, grids_sequence222, transpose_sequence222);
