@@ -2657,17 +2657,17 @@ inline std::string transpose_type_str(transpose_type t)
 }
 
 
-// find all pairs (a,b) such that a*b=prod and a>=1, b>=1
-std::vector<std::pair<int, int>> get_proc_candidates(int prod)
+// heuristic method to create a processor grid
+std::pair<int, int> get_most_balanced_proc_pair(int prod)
 {
     for(int a = static_cast<int>(std::sqrt(prod)); a >= 1; --a)
     {
         if(prod % a == 0)
             return {a, prod / a};
     }
-    // Should not happen if prod >= 1
-    return {1, prod};
+    return {1, prod}; // fallback; should not hit unless prod < 1
 }
+
 
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
                         const std::array<int, 3>&        output_grid,
@@ -2683,21 +2683,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     // For each axis, generate the pencil with 1 in that axis, as balanced as possible
     for(int pos = 0; pos < 3; ++pos)
     {
-        auto pairs = get_proc_candidates(prod);
-
-        // Find the pair (a, b) with minimal |a-b| for balance
-        int best_a = 1, best_b = prod, min_diff = prod;
-        for(const auto& pair : pairs)
-        {
-            int a = pair.first, b = pair.second;
-            int diff = std::abs(a - b);
-            if(diff < min_diff)
-            {
-                best_a   = a;
-                best_b   = b;
-                min_diff = diff;
-            }
-        }
+        auto [best_a, best_b] = get_most_balanced_proc_pair(prod);
 
         std::array<int, 3> grid = {0, 0, 0};
         int idx = 0;
@@ -2718,7 +2704,6 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     for(size_t i = 1; i < transpose_plan.size(); ++i)
         transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
-
 
 
 // **** to delete *** 
