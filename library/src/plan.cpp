@@ -2854,7 +2854,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 return t == std::make_pair(grid_layout::pencil, grid_layout::pencil);
             });
 
-        std::cout << "debugging pencil_to_pencil = " << pencil_to_pencil << std::;
+        std::cout << "debugging pencil_to_pencil = " << pencil_to_pencil << std::endl;
         std::array<int,3> in_grid222{4,8,4}, out_grid222{8,4,8};
         std::vector<std::array<int,3>> grids_sequence222;
         std::vector<transpose_type> transpose_sequence222;
