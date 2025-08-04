@@ -2725,7 +2725,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
 
     // Generate transpose type sequence as pairs of grid_layouts
     for(size_t i = 1; i < plan.size(); ++i)
-        transpose_types.push_back(get_transpose_type(plan[i - 1], plan[i]));
+        transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
 
 
@@ -2849,7 +2849,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && rank == 3)
     {
 
-        *** DEBUG HERE ***** 
+        // *** DEBUG HERE ***** 
         get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
         pencil_to_pencil = std::all_of(
