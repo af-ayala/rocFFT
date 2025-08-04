@@ -1199,7 +1199,7 @@ struct TempBufferLease
         buf         = std::move(other.buf);
         return *this;
     }
-    TempBufferLease(const TempBufferLease& other) = delete;
+    TempBufferLease(const TempBufferLease& other)            = delete;
     TempBufferLease& operator=(const TempBufferLease& other) = delete;
 
     std::shared_ptr<InternalTempBuffer> data()
@@ -2639,15 +2639,18 @@ inline transpose_type get_transpose_type(const std::array<int, 3>& from,
     return std::make_pair(grid_kind(from), grid_kind(to));
 }
 
-
 inline const char* grid_layout_str(grid_layout l)
 {
     switch(l)
     {
-    case grid_layout::slab:   return "slab";
-    case grid_layout::pencil: return "pencil";
-    case grid_layout::brick:  return "brick";
-    default:                  return "invalid";
+    case grid_layout::slab:
+        return "slab";
+    case grid_layout::pencil:
+        return "pencil";
+    case grid_layout::brick:
+        return "brick";
+    default:
+        return "invalid";
     }
 }
 
@@ -2655,7 +2658,6 @@ inline std::string transpose_type_str(transpose_type t)
 {
     return std::string(grid_layout_str(t.first)) + "_to_" + grid_layout_str(t.second);
 }
-
 
 // heuristic method to create a processor grid
 std::pair<int, int> get_most_balanced_proc_pair(int prod)
@@ -2668,7 +2670,6 @@ std::pair<int, int> get_most_balanced_proc_pair(int prod)
     return {1, prod}; // fallback; should not hit unless prod < 1
 }
 
-
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
                         const std::array<int, 3>&        output_grid,
                         std::vector<std::array<int, 3>>& transpose_plan,
@@ -2677,7 +2678,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     transpose_plan.clear();
     transpose_types.clear();
 
-    int prod = input_grid[0] * input_grid[1] * input_grid[2];
+    int                          prod = input_grid[0] * input_grid[1] * input_grid[2];
     std::set<std::array<int, 3>> pencils;
 
     // For each axis, generate the pencil with 1 in that axis, as balanced as possible
@@ -2686,7 +2687,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
         auto [best_a, best_b] = get_most_balanced_proc_pair(prod);
 
         std::array<int, 3> grid = {0, 0, 0};
-        int idx = 0;
+        int                idx  = 0;
         for(int i = 0; i < 3; ++i)
             grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? best_a : best_b);
 
@@ -2705,16 +2706,16 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
         transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
 
-
-// **** to delete *** 
+// **** to delete ***
 
 inline std::string grid_str(const std::array<int, 3>& g)
 {
-    return "{" + std::to_string(g[0]) + "," + std::to_string(g[1]) + "," + std::to_string(g[2]) + "}";
+    return "{" + std::to_string(g[0]) + "," + std::to_string(g[1]) + "," + std::to_string(g[2])
+           + "}";
 }
 
 void print_transpose_plan(const std::vector<std::array<int, 3>>& grids,
-                          const std::vector<transpose_type>&    trans_types)
+                          const std::vector<transpose_type>&     trans_types)
 {
     std::cout << "Grids sequence:\n";
     for(const auto& g : grids)
@@ -2724,7 +2725,6 @@ void print_transpose_plan(const std::vector<std::array<int, 3>>& grids,
     for(const auto& t : trans_types)
         std::cout << "  " << transpose_type_str(t) << "\n";
 }
-
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
@@ -2824,22 +2824,17 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
         pencil_to_pencil = std::all_of(
-            transpose_sequence.begin(),
-            transpose_sequence.end(),
-            [](transpose_type t) {
+            transpose_sequence.begin(), transpose_sequence.end(), [](transpose_type t) {
                 return t == std::make_pair(grid_layout::pencil, grid_layout::pencil);
             });
 
-        // *** DEBUG HERE ***** 
+        // *** DEBUG HERE *****
         std::cout << "debugging pencil_to_pencil = " << pencil_to_pencil << std::endl;
-        std::array<int,3> in_grid222{4,8,4}, out_grid222{8,4,4};
-        std::vector<std::array<int,3>> grids_sequence222;
-        std::vector<transpose_type> transpose_sequence222;
+        std::array<int, 3>              in_grid222{4, 8, 4}, out_grid222{8, 4, 4};
+        std::vector<std::array<int, 3>> grids_sequence222;
+        std::vector<transpose_type>     transpose_sequence222;
         get_transpose_plan(in_grid222, out_grid222, grids_sequence222, transpose_sequence222);
         print_transpose_plan(grids_sequence222, transpose_sequence222);
-
-
-
     }
 
     rocfft_field_t         currentField       = desc.inFields.front();
@@ -2890,30 +2885,12 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                 }
             }
 
-            // create subcommunicator using MPI_Group (RAII)
-            MPI_Group world_group;
-            MPI_Comm_group(desc.mpi_comm, &world_group);
+            // create subcommunicator using helper (RAII)
             std::vector<int> pencil_neighbors_vec(pencil_neighbors.begin(), pencil_neighbors.end());
-            MPI_Group        pencil_group;
-            MPI_Group_incl(world_group,
-                           static_cast<int>(pencil_neighbors_vec.size()),
-                           pencil_neighbors_vec.data(),
-                           &pencil_group);
-            MPI_Comm tmp_comm = MPI_COMM_NULL;
-            MPI_Comm_create(desc.mpi_comm, pencil_group, &tmp_comm);
-            MPI_Group_free(&pencil_group);
-            MPI_Group_free(&world_group);
-            MPI_Comm_wrapper_t pencil_comm;
-            bool               valid_pencil_comm = false;
-            if(tmp_comm != MPI_COMM_NULL)
-            {
-                pencil_comm       = MPI_Comm_wrapper_t::from_raw(tmp_comm);
-                valid_pencil_comm = true;
-            }
-            else
-            {
+            MPI_Comm_wrapper_t pencil_comm
+                = make_subcommunicator(desc.mpi_comm, pencil_neighbors_vec);
+            if(!pencil_comm)
                 throw std::runtime_error("Failed to create a valid Pencil sub-communicator");
-            }
 
             // allocate temp buffers for nextField,
             // loop over the pencil_neighbors_vec (these are the global ranks in this subcomm)
@@ -2947,7 +2924,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
                             currentAntecedents,
                             transposeItems,
                             transposeNumber++,
-                            (valid_pencil_comm ? std::move(pencil_comm) : MPI_Comm_wrapper_t{}));
+                            std::move(pencil_comm));
 
             currentField       = nextField;
             currentBufs        = tempBufs;

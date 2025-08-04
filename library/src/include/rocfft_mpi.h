@@ -280,6 +280,41 @@ inline MPI_Datatype rocfft_type_to_mpi_type(rocfft_precision precision, rocfft_a
     }
 }
 
+inline MPI_Comm_wrapper_t make_subcommunicator(MPI_Comm parent_comm, const std::vector<int>& ranks)
+{
+    if(ranks.empty())
+        return MPI_Comm_wrapper_t{};
+
+    MPI_Group world_group = MPI_GROUP_NULL, sub_group = MPI_GROUP_NULL;
+    MPI_Comm  new_comm    = MPI_COMM_NULL;
+
+    int ret = MPI_Comm_group(parent_comm, &world_group);
+    if(ret != MPI_SUCCESS)
+        throw std::runtime_error("MPI_Comm_group failed");
+
+    ret = MPI_Group_incl(world_group, static_cast<int>(ranks.size()), ranks.data(), &sub_group);
+    MPI_Group_free(&world_group);
+
+    if(ret != MPI_SUCCESS)
+    {
+        if(sub_group != MPI_GROUP_NULL)
+            MPI_Group_free(&sub_group);
+        throw std::runtime_error("MPI_Group_incl failed");
+    }
+
+    ret = MPI_Comm_create(parent_comm, sub_group, &new_comm);
+    MPI_Group_free(&sub_group);
+
+    if(ret != MPI_SUCCESS)
+        throw std::runtime_error("MPI_Comm_create failed");
+
+    if(new_comm == MPI_COMM_NULL)
+        return MPI_Comm_wrapper_t{};
+
+    return MPI_Comm_wrapper_t::from_raw(new_comm);
+}
+
+
 #else
 
 class MPI_Comm_wrapper_t
