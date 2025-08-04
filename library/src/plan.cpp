@@ -2657,25 +2657,16 @@ inline std::string transpose_type_str(transpose_type t)
 }
 
 
-template <typename T>
-void push_unique_grid(std::vector<T>& vec, const T& val)
-{
-    if(std::find(vec.begin(), vec.end(), val) == vec.end())
-        vec.push_back(val);
-}
 // find all pairs (a,b) such that a*b=prod and a>=1, b>=1
 std::vector<std::pair<int, int>> get_proc_candidates(int prod)
 {
-    std::vector<std::pair<int, int>> result;
-    for(int a = 1; a <= prod; ++a)
+    for(int a = static_cast<int>(std::sqrt(prod)); a >= 1; --a)
     {
         if(prod % a == 0)
-        {
-            int b = prod / a;
-            result.emplace_back(a, b);
-        }
+            return {a, prod / a};
     }
-    return result;
+    // Should not happen if prod >= 1
+    return {1, prod};
 }
 
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
@@ -2687,7 +2678,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     transpose_types.clear();
 
     int prod = input_grid[0] * input_grid[1] * input_grid[2];
-    std::vector<std::array<int, 3>> pencils;
+    std::set<std::array<int, 3>> pencils;
 
     // For each axis, generate the pencil with 1 in that axis, as balanced as possible
     for(int pos = 0; pos < 3; ++pos)
@@ -2714,7 +2705,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
             grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? best_a : best_b);
 
         if((grid != input_grid) && (grid != output_grid))
-            push_unique_grid(pencils, grid);
+            pencils.insert(grid); // direct insert, no duplicate check needed
     }
 
     // Full transpose plan is: input -> [all pencils] -> output
@@ -2727,6 +2718,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     for(size_t i = 1; i < transpose_plan.size(); ++i)
         transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
+
 
 
 // **** to delete *** 
