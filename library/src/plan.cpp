@@ -2134,12 +2134,7 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                               MPI_Comm_wrapper_t&&       subcomm)
 {
 #ifdef ROCFFT_MPI_ENABLE
-    int  subcomm_rank = -1, subcomm_size = -1;
-    auto rcmpi = MPI_Comm_rank(subcomm, &subcomm_rank);
-    if(rcmpi != MPI_SUCCESS || subcomm_rank < 0)
-        throw std::runtime_error("MPI_Comm_rank failed for subcommunicator (error code: "
-                                 + std::to_string(rcmpi) + ", rank: " + std::to_string(subcomm_rank)
-                                 + ")");
+    int   subcomm_size = -1;
     rcmpi = MPI_Comm_size(subcomm, &subcomm_size);
     if(rcmpi != MPI_SUCCESS || subcomm_size < 2)
         throw std::runtime_error(
