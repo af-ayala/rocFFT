@@ -1199,7 +1199,7 @@ struct TempBufferLease
         buf         = std::move(other.buf);
         return *this;
     }
-    TempBufferLease(const TempBufferLease& other)            = delete;
+    TempBufferLease(const TempBufferLease& other) = delete;
     TempBufferLease& operator=(const TempBufferLease& other) = delete;
 
     std::shared_ptr<InternalTempBuffer> data()
@@ -2618,74 +2618,44 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
 }
 
 // get transpose plan structure
-inline int grid_kind(const std::array<int, 3>& g)
+inline grid_layout grid_kind(const std::array<int, 3>& g)
 {
     int n_ones = 0;
     for(int i = 0; i < 3; ++i)
         if(g[i] == 1)
             ++n_ones;
     if(n_ones == 2)
-        return 1; // slab
+        return grid_layout::slab;
     if(n_ones == 1)
-        return 2; // pencil
+        return grid_layout::pencil;
     if(n_ones == 0)
-        return 3; // brick
-    return 0;
+        return grid_layout::brick;
+    return grid_layout::invalid;
 }
 
 inline transpose_type get_transpose_type(const std::array<int, 3>& from,
                                          const std::array<int, 3>& to)
 {
-    int kind_from = grid_kind(from);
-    int kind_to   = grid_kind(to);
-
-    if(kind_from == 2 && kind_to == 2)
-        return transpose_type::pencil_to_pencil;
-    if(kind_from == 2 && kind_to == 1)
-        return transpose_type::pencil_to_slab;
-    if(kind_from == 2 && kind_to == 3)
-        return transpose_type::pencil_to_brick;
-    if(kind_from == 1 && kind_to == 2)
-        return transpose_type::slab_to_pencil;
-    if(kind_from == 1 && kind_to == 1)
-        return transpose_type::slab_to_slab;
-    if(kind_from == 1 && kind_to == 3)
-        return transpose_type::slab_to_brick;
-    if(kind_from == 3 && kind_to == 2)
-        return transpose_type::brick_to_pencil;
-    if(kind_from == 3 && kind_to == 1)
-        return transpose_type::brick_to_slab;
-    if(kind_from == 3 && kind_to == 3)
-        return transpose_type::brick_to_brick;
-    throw std::runtime_error("Unknown transpose kind!");
+    return std::make_pair(grid_kind(from), grid_kind(to));
 }
 
-inline const char* transpose_type_str(transpose_type t)
+
+inline const char* grid_layout_str(grid_layout l)
 {
-    switch(t)
+    switch(l)
     {
-    case transpose_type::pencil_to_pencil:
-        return "pencil_to_pencil";
-    case transpose_type::pencil_to_slab:
-        return "pencil_to_slab";
-    case transpose_type::pencil_to_brick:
-        return "pencil_to_brick";
-    case transpose_type::slab_to_pencil:
-        return "slab_to_pencil";
-    case transpose_type::slab_to_slab:
-        return "slab_to_slab";
-    case transpose_type::slab_to_brick:
-        return "slab_to_brick";
-    case transpose_type::brick_to_pencil:
-        return "brick_to_pencil";
-    case transpose_type::brick_to_slab:
-        return "brick_to_slab";
-    case transpose_type::brick_to_brick:
-        return "brick_to_brick";
-    default:
-        return "?";
+    case grid_layout::slab:   return "slab";
+    case grid_layout::pencil: return "pencil";
+    case grid_layout::brick:  return "brick";
+    default:                  return "invalid";
     }
 }
+
+inline std::string transpose_type_str(transpose_type t)
+{
+    return std::string(grid_layout_str(t.first)) + "_to_" + grid_layout_str(t.second);
+}
+
 
 template <typename T>
 void push_unique_grid(std::vector<T>& vec, const T& val)
@@ -2710,24 +2680,25 @@ std::vector<std::pair<int, int>> get_proc_candidates(int prod)
 
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
                         const std::array<int, 3>&        output_grid,
-                        std::vector<std::array<int, 3>>& plan,
-                        std::vector<transpose_type>&     trans_types)
+                        std::vector<std::array<int, 3>>& transpose_plan,
+                        std::vector<transpose_type>&     transpose_types)
 {
-    plan.clear();
-    trans_types.clear();
+    transpose_plan.clear();
+    transpose_types.clear();
 
-    int                             prod = input_grid[0] * input_grid[1] * input_grid[2];
+    int prod = input_grid[0] * input_grid[1] * input_grid[2];
     std::vector<std::array<int, 3>> pencils;
 
-    // get sequence of grids
-    // for each axis, generate the pencil with 1 in that axis, largest and most balanced possible
+    // For each axis, generate the pencil with 1 in that axis, as balanced as possible
     for(int pos = 0; pos < 3; ++pos)
     {
         auto pairs = get_proc_candidates(prod);
-        // choose the pair with minimal |a-b| (most balanced)
+
+        // Find the pair (a, b) with minimal |a-b| for balance
         int best_a = 1, best_b = prod, min_diff = prod;
-        for(const auto& [a, b] : pairs)
+        for(const auto& pair : pairs)
         {
+            int a = pair.first, b = pair.second;
             int diff = std::abs(a - b);
             if(diff < min_diff)
             {
@@ -2736,25 +2707,52 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
                 min_diff = diff;
             }
         }
-        std::array<int, 3> grid;
-        int                idx = 0;
+
+        std::array<int, 3> grid = {0, 0, 0};
+        int idx = 0;
         for(int i = 0; i < 3; ++i)
             grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? best_a : best_b);
 
-    if ((grid != input_grid) && (grid != output_grid))
-        push_unique_grid(pencils, grid);
+        if((grid != input_grid) && (grid != output_grid))
+            push_unique_grid(pencils, grid);
     }
 
-    // tranpose plan: input -> [all pencils] -> output
-    plan.push_back(input_grid);
+    // Full transpose plan is: input -> [all pencils] -> output
+    transpose_plan.push_back(input_grid);
     for(const auto& g : pencils)
-        plan.push_back(g);
-    plan.push_back(output_grid);
+        transpose_plan.push_back(g);
+    transpose_plan.push_back(output_grid);
 
-    // get transpose type sequence
+    // Generate transpose type sequence as pairs of grid_layouts
     for(size_t i = 1; i < plan.size(); ++i)
-        trans_types.push_back(get_transpose_type(plan[i - 1], plan[i]));
+        transpose_types.push_back(get_transpose_type(plan[i - 1], plan[i]));
 }
+
+
+// **** to delete *** 
+
+inline std::string grid_str(const std::array<int, 3>& g)
+{
+    return "{" + std::to_string(g[0]) + "," + std::to_string(g[1]) + "," + std::to_string(g[2]) + "}";
+}
+
+inline std::string transpose_type_str(transpose_type t)
+{
+    return std::string(grid_layout_str(t.first)) + "_to_" + grid_layout_str(t.second);
+}
+
+void print_transpose_plan(const std::vector<std::array<int, 3>>& grids,
+                          const std::vector<transpose_type>&    trans_types)
+{
+    std::cout << "Grids sequence:\n";
+    for(const auto& g : grids)
+        std::cout << "  " << grid_str(g) << "\n";
+
+    std::cout << "Transpose types:\n";
+    for(const auto& t : trans_types)
+        std::cout << "  " << transpose_type_str(t) << "\n";
+}
+
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
@@ -2826,7 +2824,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     auto lengthsWithBatch = lengths;
     lengthsWithBatch.push_back(batch);
 
-    #ifdef ROCFFT_MPI_ENABLE
+#ifdef ROCFFT_MPI_ENABLE
     // track which dimensions have already been FFTed
     std::vector<int> fft_done(rank, 0);
     for(auto d : contiguousInputDims)
@@ -2850,12 +2848,26 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // plan transposition steps
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && rank == 3)
     {
+
+        *** DEBUG HERE ***** 
         get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
 
-        pencil_to_pencil
-            = std::all_of(transpose_sequence.begin(),
-                          transpose_sequence.end(),
-                          [](transpose_type t) { return t == transpose_type::pencil_to_pencil; });
+        pencil_to_pencil = std::all_of(
+            transpose_sequence.begin(),
+            transpose_sequence.end(),
+            [](transpose_type t) {
+                return t == std::make_pair(grid_layout::pencil, grid_layout::pencil);
+            });
+
+        std::cout << "debugging pencil_to_pencil = " << pencil_to_pencil << std::;
+        std::array<int,3> in_grid222{4,8,4}, out_grid222{8,4,8};
+        std::vector<std::array<int,3>> grids_sequence222;
+        std::vector<transpose_type> transpose_sequence222;
+        get_transpose_plan(in_grid222, out_grid222, grids_sequence222, transpose_sequence222);
+        print_transpose_plan(grids_sequence222, transpose_sequence222);
+
+
+
     }
 
     rocfft_field_t         currentField       = desc.inFields.front();
@@ -2986,7 +2998,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     }
     // default general decomposition without sub-communicators
     else
-    #endif
+#endif
     {
         // transpose non-contiguous dims to be contiguous and
         // transform them too
