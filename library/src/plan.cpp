@@ -2724,7 +2724,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     transpose_plan.push_back(output_grid);
 
     // Generate transpose type sequence as pairs of grid_layouts
-    for(size_t i = 1; i < plan.size(); ++i)
+    for(size_t i = 1; i < transpose_plan.size(); ++i)
         transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
 
@@ -2734,11 +2734,6 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
 inline std::string grid_str(const std::array<int, 3>& g)
 {
     return "{" + std::to_string(g[0]) + "," + std::to_string(g[1]) + "," + std::to_string(g[2]) + "}";
-}
-
-inline std::string transpose_type_str(transpose_type t)
-{
-    return std::string(grid_layout_str(t.first)) + "_to_" + grid_layout_str(t.second);
 }
 
 void print_transpose_plan(const std::vector<std::array<int, 3>>& grids,
