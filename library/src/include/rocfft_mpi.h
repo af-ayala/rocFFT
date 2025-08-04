@@ -286,34 +286,31 @@ inline MPI_Comm_wrapper_t make_subcommunicator(MPI_Comm parent_comm, const std::
         return MPI_Comm_wrapper_t{};
 
     MPI_Group world_group = MPI_GROUP_NULL, sub_group = MPI_GROUP_NULL;
-    MPI_Comm  new_comm    = MPI_COMM_NULL;
+    MPI_Comm  new_comm = MPI_COMM_NULL;
 
-    int ret = MPI_Comm_group(parent_comm, &world_group);
-    if(ret != MPI_SUCCESS)
-        throw std::runtime_error("MPI_Comm_group failed");
+    auto rcmpi = MPI_Comm_group(parent_comm, &world_group);
+    if(rcmpi != MPI_SUCCESS)
+        throw std::runtime_error("MPI_Comm_group failed" + std::to_string(rcmpi));
 
-    ret = MPI_Group_incl(world_group, static_cast<int>(ranks.size()), ranks.data(), &sub_group);
+    rcmpi = MPI_Group_incl(world_group, static_cast<int>(ranks.size()), ranks.data(), &sub_group);
     MPI_Group_free(&world_group);
-
-    if(ret != MPI_SUCCESS)
+    if(rcmpi != MPI_SUCCESS)
     {
         if(sub_group != MPI_GROUP_NULL)
             MPI_Group_free(&sub_group);
-        throw std::runtime_error("MPI_Group_incl failed");
+        throw std::runtime_error("MPI_Group_incl failed" + std::to_string(rcmpi));
     }
 
-    ret = MPI_Comm_create(parent_comm, sub_group, &new_comm);
+    rcmpi = MPI_Comm_create(parent_comm, sub_group, &new_comm);
     MPI_Group_free(&sub_group);
-
-    if(ret != MPI_SUCCESS)
-        throw std::runtime_error("MPI_Comm_create failed");
+    if(rcmpi != MPI_SUCCESS)
+        throw std::runtime_error("MPI_Comm_create failed" + std::to_string(rcmpi));
 
     if(new_comm == MPI_COMM_NULL)
         return MPI_Comm_wrapper_t{};
 
     return MPI_Comm_wrapper_t::from_raw(new_comm);
 }
-
 
 #else
 

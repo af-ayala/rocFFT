@@ -2122,6 +2122,7 @@ void rocfft_plan_t::GlobalTransposeP2P(size_t                     elem_size,
 }
 
 // global transpose using MPI sub-communicators
+// subcomm is guaranteed to be a valid communicator (not MPI_COMM_NULL) before this call
 void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_size,
                                               const rocfft_field_t&      inField,
                                               const rocfft_field_t&      outField,
@@ -2133,9 +2134,18 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
                                               MPI_Comm_wrapper_t&&       subcomm)
 {
 #ifdef ROCFFT_MPI_ENABLE
-    int subcomm_rank = -1, subcomm_size = -1;
-    MPI_Comm_rank(subcomm, &subcomm_rank);
-    MPI_Comm_size(subcomm, &subcomm_size);
+    int  subcomm_rank = -1, subcomm_size = -1;
+    auto rcmpi = MPI_Comm_rank(subcomm, &subcomm_rank);
+    if(rcmpi != MPI_SUCCESS || subcomm_rank < 0)
+        throw std::runtime_error("MPI_Comm_rank failed for subcommunicator (error code: "
+                                 + std::to_string(rcmpi) + ", rank: " + std::to_string(subcomm_rank)
+                                 + ")");
+    rcmpi = MPI_Comm_size(subcomm, &subcomm_size);
+    if(rcmpi != MPI_SUCCESS || subcomm_size < 2)
+        throw std::runtime_error(
+            "MPI_Comm_size error: subcommunicator is invalid or contains fewer than two ranks "
+            "(error code: "
+            + std::to_string(rcmpi) + ", size: " + std::to_string(subcomm_size) + ")");
 
     // map subcomm-local rank <-> global rank for this pencil
     // for all ranks, set up a vector:
@@ -2146,8 +2156,13 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
 
     // build mapping by MPI_Allgather (gathering global rank from all subcomm ranks)
     int my_global_rank = get_local_comm_rank();
-    MPI_Allgather(
+    rcmpi              = MPI_Allgather(
         &my_global_rank, 1, MPI_INT, global_rank_of_subcomm_rank.data(), 1, MPI_INT, subcomm);
+    if(rcmpi != MPI_SUCCESS)
+    {
+        throw std::runtime_error("MPI_Allgather failed: " + std::to_string(rcmpi));
+    }
+
     for(int i = 0; i < subcomm_size; ++i)
         subcomm_rank_of_global_rank[global_rank_of_subcomm_rank[i]] = i;
 
@@ -2169,16 +2184,16 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
     for(size_t inBrickIdx = 0; inBrickIdx < inField.bricks.size(); ++inBrickIdx)
     {
         const auto& inBrick       = inField.bricks[inBrickIdx];
-        int         inRank        = inBrick.location.comm_rank;
-        int         inSubcommRank = subcomm_rank_of_global_rank[inRank];
+        const int   inRank        = inBrick.location.comm_rank;
+        const int   inSubcommRank = subcomm_rank_of_global_rank[inRank];
         if(inSubcommRank == -1)
             continue; // skip input bricks not in this subcomm
 
         for(size_t outBrickIdx = 0; outBrickIdx < outField.bricks.size(); ++outBrickIdx)
         {
             const auto& outBrick       = outField.bricks[outBrickIdx];
-            int         outRank        = outBrick.location.comm_rank;
-            int         outSubcommRank = subcomm_rank_of_global_rank[outRank];
+            const int   outRank        = outBrick.location.comm_rank;
+            const int   outSubcommRank = subcomm_rank_of_global_rank[outRank];
             if(outSubcommRank == -1)
                 continue; // skip output bricks not in this subcomm
 
@@ -2298,12 +2313,12 @@ void rocfft_plan_t::GlobalTransposeA2ASubcomm(size_t                     elem_si
     }
 
     // check uniformity for alltoall within the subcomm
-    bool uniform_counts = std::all_of(send_counts.begin(),
-                                      send_counts.end(),
-                                      [&](size_t c) { return c == send_counts[0]; })
-                          && std::all_of(recv_counts.begin(), recv_counts.end(), [&](size_t c) {
-                                 return c == recv_counts[0];
-                             });
+    const bool uniform_counts
+        = std::all_of(
+              send_counts.begin(), send_counts.end(), [&](size_t c) { return c == send_counts[0]; })
+          && std::all_of(recv_counts.begin(), recv_counts.end(), [&](size_t c) {
+                 return c == recv_counts[0];
+             });
 
     size_t uniform_count_inside_subcomm = 0;
     if(uniform_counts)
