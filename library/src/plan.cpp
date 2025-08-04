@@ -2516,13 +2516,12 @@ void rocfft_plan_t::GlobalTransposeA2A(size_t                     elem_size,
     }
 
     // check if uniform exchange to use MPI_Alltoall
-    bool uniform_counts = false;
-    uniform_counts      = std::all_of(send_counts.begin(),
-                                 send_counts.end(),
-                                 [&](size_t c) { return c == send_counts[0]; })
-                     && std::all_of(recv_counts.begin(), recv_counts.end(), [&](size_t c) {
-                            return c == recv_counts[0];
-                        });
+    const bool uniform_counts
+        = std::all_of(
+              send_counts.begin(), send_counts.end(), [&](size_t c) { return c == send_counts[0]; })
+          && std::all_of(recv_counts.begin(), recv_counts.end(), [&](size_t c) {
+                 return c == recv_counts[0];
+             });
 
     // add the all-to-all op itself, which depends on pack ops
     auto alltoall_ptr = std::make_unique<CommAllToAll>(precision,
@@ -2582,7 +2581,21 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
     rocfft_field_t out = currentField;
     out.bricks.resize(n_bricks);
 
-    int ndim = (int)lengthsWithBatch.size();
+    const int ndim = static_cast<int>(lengthsWithBatch.size());
+    for(int i = 0; i < 2; ++i)
+    {
+        int ax = split_axes[i];
+        int sz = split_sizes[i];
+        if(ax < 0 || ax >= ndim)
+            throw std::out_of_range("split_axes[" + std::to_string(i) + "] value "
+                                    + std::to_string(ax)
+                                    + " is out of range for ndim=" + std::to_string(ndim));
+        if(sz <= 0 || static_cast<size_t>(sz) > lengthsWithBatch[ax])
+            throw std::invalid_argument("split_sizes[" + std::to_string(i) + "] ("
+                                        + std::to_string(sz)
+                                        + ") must be positive and not exceed axis length ("
+                                        + std::to_string(lengthsWithBatch[ax]) + ")");
+    }
 
     // distribute location/device assignments round-robin
     for(int i = 0; i < n_bricks; ++i)
@@ -2611,8 +2624,8 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
         brick.upper[axis_q] = len_q * (q + 1) / Q;
 
         // contiguous strides
-        auto brickLength = brick.length();
-        int  dist        = 1;
+        const auto brickLength = brick.length();
+        int        dist        = 1;
         for(size_t s = 0; s < brick.stride.size(); ++s)
         {
             brick.stride[s] = dist;
@@ -2628,12 +2641,9 @@ rocfft_field_t MakeFieldWithPencilSplit(const rocfft_field_t&      currentField,
 }
 
 // get transpose plan structure
-inline grid_layout grid_kind(const std::array<int, 3>& g)
+inline grid_layout grid_kind(const std::array<int, 3>& grid)
 {
-    int n_ones = 0;
-    for(int i = 0; i < 3; ++i)
-        if(g[i] == 1)
-            ++n_ones;
+    const int n_ones = std::count(grid.begin(), grid.end(), 1);
     if(n_ones == 2)
         return grid_layout::slab;
     if(n_ones == 1)
