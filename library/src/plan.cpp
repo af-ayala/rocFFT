@@ -2687,7 +2687,7 @@ std::pair<int, int> get_most_balanced_proc_pair(int prod)
         if(prod % a == 0)
             return {a, prod / a};
     }
-    return {1, prod}; // fallback; should not hit unless prod < 1
+    return {1, prod}; // should not hit unless prod < 1
 }
 
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
@@ -2701,7 +2701,7 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     int                          prod = input_grid[0] * input_grid[1] * input_grid[2];
     std::set<std::array<int, 3>> pencils;
 
-    // For each axis, generate the pencil with 1 in that axis, as balanced as possible
+    // for each axis, generate the pencil with 1 in that axis, as balanced as possible
     for(int pos = 0; pos < 3; ++pos)
     {
         auto [best_a, best_b] = get_most_balanced_proc_pair(prod);
@@ -2715,36 +2715,17 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
             pencils.insert(grid); // direct insert, no duplicate check needed
     }
 
-    // Full transpose plan is: input -> [all pencils] -> output
+    // full transpose plan is: input -> [all pencils] -> output
     transpose_plan.push_back(input_grid);
     for(const auto& g : pencils)
         transpose_plan.push_back(g);
     transpose_plan.push_back(output_grid);
 
-    // Generate transpose type sequence as pairs of grid_layouts
+    // generate transpose type sequence as pairs of grid_layouts
     for(size_t i = 1; i < transpose_plan.size(); ++i)
         transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
 
-// **** to delete ***
-
-inline std::string grid_str(const std::array<int, 3>& g)
-{
-    return "{" + std::to_string(g[0]) + "," + std::to_string(g[1]) + "," + std::to_string(g[2])
-           + "}";
-}
-
-void print_transpose_plan(const std::vector<std::array<int, 3>>& grids,
-                          const std::vector<transpose_type>&     trans_types)
-{
-    std::cout << "Grids sequence:\n";
-    for(const auto& g : grids)
-        std::cout << "  " << grid_str(g) << "\n";
-
-    std::cout << "Transpose types:\n";
-    for(const auto& t : trans_types)
-        std::cout << "  " << transpose_type_str(t) << "\n";
-}
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
@@ -2847,14 +2828,6 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
             transpose_sequence.begin(), transpose_sequence.end(), [](transpose_type t) {
                 return t == std::make_pair(grid_layout::pencil, grid_layout::pencil);
             });
-
-        // *** DEBUG HERE *****
-        std::cout << "debugging pencil_to_pencil = " << pencil_to_pencil << std::endl;
-        std::array<int, 3>              in_grid222{4, 8, 4}, out_grid222{8, 4, 4};
-        std::vector<std::array<int, 3>> grids_sequence222;
-        std::vector<transpose_type>     transpose_sequence222;
-        get_transpose_plan(in_grid222, out_grid222, grids_sequence222, transpose_sequence222);
-        print_transpose_plan(grids_sequence222, transpose_sequence222);
     }
 
     rocfft_field_t         currentField       = desc.inFields.front();
