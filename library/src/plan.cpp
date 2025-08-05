@@ -2680,7 +2680,7 @@ inline std::string transpose_type_str(transpose_type t)
 }
 
 // heuristic method to create a processor grid
-std::pair<int, int> get_most_balanced_proc_pair(int prod, size_t limit_a, size_t limit_b)
+std::pair<int, int> get_most_balanced_proc_pair(int prod, int limit_a, int limit_b)
 {
     int best_a = 1, best_b = prod, min_diff = prod;
     for(int a = 1; a <= prod; ++a)
