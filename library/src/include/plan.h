@@ -117,9 +117,7 @@ struct rocfft_brick_t
 
     bool operator==(const rocfft_brick_t& other) const
     {
-        return lower == other.lower && upper == other.upper && stride == other.stride
-               && location.comm_rank == other.location.comm_rank
-               && location.device == other.location.device;
+        return lower == other.lower && upper == other.upper && stride == other.stride && location == other.location;
     }
 
     std::string str() const;

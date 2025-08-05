@@ -1199,7 +1199,7 @@ struct TempBufferLease
         buf         = std::move(other.buf);
         return *this;
     }
-    TempBufferLease(const TempBufferLease& other)            = delete;
+    TempBufferLease(const TempBufferLease& other) = delete;
     TempBufferLease& operator=(const TempBufferLease& other) = delete;
 
     std::shared_ptr<InternalTempBuffer> data()
@@ -2659,7 +2659,7 @@ inline transpose_type get_transpose_type(const std::array<int, 3>& from,
     return std::make_pair(grid_kind(from), grid_kind(to));
 }
 
-inline const char* grid_layout_str(grid_layout l)
+inline std::string grid_layout_str(grid_layout l)
 {
     switch(l)
     {
@@ -2676,40 +2676,59 @@ inline const char* grid_layout_str(grid_layout l)
 
 inline std::string transpose_type_str(transpose_type t)
 {
-    return std::string(grid_layout_str(t.first)) + "_to_" + grid_layout_str(t.second);
+    return grid_layout_str(t.first) + "_to_" + grid_layout_str(t.second);
 }
 
 // heuristic method to create a processor grid
-std::pair<int, int> get_most_balanced_proc_pair(int prod)
+std::pair<size_t, size_t> get_most_balanced_proc_pair(size_t prod, size_t limit_a, size_t limit_b)
 {
-    for(int a = static_cast<int>(std::sqrt(prod)); a >= 1; --a)
+    size_t best_a = 1, best_b = prod, min_diff = prod;
+    for(size_t a = 1; a <= prod; ++a)
     {
         if(prod % a == 0)
-            return {a, prod / a};
+        {
+            size_t b = prod / a;
+            if(a <= limit_a && b <= limit_b)
+            {
+                size_t diff = std::abs(a - b);
+                if(diff < min_diff)
+                {
+                    best_a = a;
+                    best_b = b;
+                    min_diff = diff;
+                }
+            }
+        }
     }
-    return {1, prod}; // should not hit unless prod < 1
+    return {best_a, best_b};
 }
+
 
 void get_transpose_plan(const std::array<int, 3>&        input_grid,
                         const std::array<int, 3>&        output_grid,
+                        const std::array<size_t, 3>&      global_lengths,
                         std::vector<std::array<int, 3>>& transpose_plan,
                         std::vector<transpose_type>&     transpose_types)
 {
     transpose_plan.clear();
     transpose_types.clear();
 
-    int                          prod = input_grid[0] * input_grid[1] * input_grid[2];
+    size_t                          prod = input_grid[0] * input_grid[1] * input_grid[2];
     std::set<std::array<int, 3>> pencils;
 
     // for each axis, generate the pencil with 1 in that axis, as balanced as possible
     for(int pos = 0; pos < 3; ++pos)
     {
-        auto [best_a, best_b] = get_most_balanced_proc_pair(prod);
+        // axes to split: the two that are not 'pos'
+        size_t split_a = (pos + 1) % 3;
+        size_t split_b = (pos + 2) % 3;
+        auto [best_a, best_b] = get_most_balanced_proc_pair(
+            prod, global_lengths[split_a], global_lengths[split_b]);
 
         std::array<int, 3> grid = {0, 0, 0};
         int                idx  = 0;
         for(int i = 0; i < 3; ++i)
-            grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? best_a : best_b);
+            grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? static_cast<int>(best_a) : static_cast<int>(best_b));
 
         if((grid != input_grid) && (grid != output_grid))
             pencils.insert(grid); // direct insert, no duplicate check needed
@@ -2725,7 +2744,6 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     for(size_t i = 1; i < transpose_plan.size(); ++i)
         transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
-
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
@@ -2822,7 +2840,8 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && rank == 3)
     {
 
-        get_transpose_plan(in_grid, out_grid, grids_sequence, transpose_sequence);
+        get_transpose_plan(in_grid, out_grid, {lengths[0], lengths[1], lengths[2]}, grids_sequence, transpose_sequence);
+
 
         pencil_to_pencil = std::all_of(
             transpose_sequence.begin(), transpose_sequence.end(), [](transpose_type t) {

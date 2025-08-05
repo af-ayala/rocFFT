@@ -828,6 +828,11 @@ struct rocfft_location_t
         return device < other.device;
     }
 
+    bool operator==(const rocfft_location_t& other) const
+    {
+        return comm_rank == other.comm_rank && device == other.device;
+    }
+
     int comm_rank = 0;
     int device    = 0;
 };
@@ -841,7 +846,7 @@ public:
         : comm_rank(comm_rank)
     {
     }
-    InternalTempBuffer(const InternalTempBuffer&)            = delete;
+    InternalTempBuffer(const InternalTempBuffer&) = delete;
     InternalTempBuffer& operator=(const InternalTempBuffer&) = delete;
     ~InternalTempBuffer()                                    = default;
 
@@ -897,8 +902,8 @@ private:
 class BufferPtr
 {
 public:
-    BufferPtr()                            = default;
-    BufferPtr(const BufferPtr&)            = default;
+    BufferPtr()                 = default;
+    BufferPtr(const BufferPtr&) = default;
     BufferPtr& operator=(const BufferPtr&) = default;
     ~BufferPtr()                           = default;
 
@@ -1025,7 +1030,7 @@ struct MultiPlanItem
 {
     MultiPlanItem();
     virtual ~MultiPlanItem();
-    MultiPlanItem(const MultiPlanItem&)            = delete;
+    MultiPlanItem(const MultiPlanItem&) = delete;
     MultiPlanItem& operator=(const MultiPlanItem&) = delete;
 
     // multi-process requests
