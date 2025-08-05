@@ -2878,7 +2878,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
         std::array<int, 3>              in_grid222{4, 8, 4}, out_grid222{8, 4, 4};
         std::vector<std::array<int, 3>> grids_sequence222;
         std::vector<transpose_type>     transpose_sequence222;
-        get_transpose_plan(in_grid222, out_grid222, grids_sequence222, transpose_sequence222);
+        get_transpose_plan(in_grid222, out_grid222, {lengths[0], lengths[1], lengths[2]}, grids_sequence222, transpose_sequence222);
         print_transpose_plan(grids_sequence222, transpose_sequence222);
 
         pencil_to_pencil = std::all_of(
