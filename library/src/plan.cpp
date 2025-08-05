@@ -2690,7 +2690,7 @@ std::pair<size_t, size_t> get_most_balanced_proc_pair(size_t prod, size_t limit_
             size_t b = prod / a;
             if(a <= limit_a && b <= limit_b)
             {
-                size_t diff = std::abs(a - b);
+                size_t diff = static_cast<size_t>(std::abs(a - b));
                 if(diff < min_diff)
                 {
                     best_a = a;
