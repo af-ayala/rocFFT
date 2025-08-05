@@ -2755,27 +2755,6 @@ void get_transpose_plan(const std::array<int, 3>&         input_grid,
         transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
 
-// **** to delete ***
-
-inline std::string grid_str(const std::array<int, 3>& g)
-{
-    return "{" + std::to_string(g[0]) + "," + std::to_string(g[1]) + "," + std::to_string(g[2])
-           + "}";
-}
-
-void print_transpose_plan(const std::vector<std::array<int, 3>>& grids,
-                          const std::vector<transpose_type>&     trans_types)
-{
-    std::cout << "Grids sequence:\n";
-    for(const auto& g : grids)
-        std::cout << "  " << grid_str(g) << "\n";
-
-    std::cout << "Transpose types:\n";
-    for(const auto& t : trans_types)
-        std::cout << "  " << transpose_type_str(t) << "\n";
-}
-
-
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
     const auto local_comm_rank = get_local_comm_rank();
@@ -2870,16 +2849,7 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     // plan transposition steps
     if(num_split_dims_in >= 2 && num_split_dims_out >= 2 && rank == 3)
     {
-
         get_transpose_plan(in_grid, out_grid, {lengths[0], lengths[1], lengths[2]}, grids_sequence, transpose_sequence);
-
-        // *** DEBUG HERE *****
-        std::cout << "debugging pencil_to_pencil = " << pencil_to_pencil << std::endl;
-        std::array<int, 3>              in_grid222{4, 8, 4}, out_grid222{8, 4, 4};
-        std::vector<std::array<int, 3>> grids_sequence222;
-        std::vector<transpose_type>     transpose_sequence222;
-        get_transpose_plan(in_grid222, out_grid222, {lengths[0], lengths[1], lengths[2]}, grids_sequence222, transpose_sequence222);
-        print_transpose_plan(grids_sequence222, transpose_sequence222);
 
         pencil_to_pencil = std::all_of(
             transpose_sequence.begin(), transpose_sequence.end(), [](transpose_type t) {
