@@ -2682,7 +2682,7 @@ inline std::string transpose_type_str(transpose_type t)
 // heuristic method to create a processor grid
 std::pair<int, int> get_most_balanced_proc_pair(int prod, int limit_a, int limit_b)
 {
-    int best_a = 1, best_b = prod, min_diff = prod;
+    int best_a = -1, best_b = -1, min_diff = prod;
     for(int a = 1; a <= prod; ++a)
     {
         if(prod % a == 0)
@@ -2700,37 +2700,45 @@ std::pair<int, int> get_most_balanced_proc_pair(int prod, int limit_a, int limit
             }
         }
     }
+    if(best_a == -1 || best_b == -1)
+    {
+        throw std::runtime_error(
+            "get_most_balanced_proc_pair: Cannot decompose prod=" + std::to_string(prod)
+            + " within given limits: limit_a=" + std::to_string(limit_a)
+            + ", limit_b=" + std::to_string(limit_b)
+            + " (limit_a * limit_b = " + std::to_string(limit_a * limit_b) + ")");
+    }
     return {best_a, best_b};
 }
 
-
-void get_transpose_plan(const std::array<int, 3>&        input_grid,
-                        const std::array<int, 3>&        output_grid,
+void get_transpose_plan(const std::array<int, 3>&         input_grid,
+                        const std::array<int, 3>&         output_grid,
                         const std::array<size_t, 3>&      global_lengths,
-                        std::vector<std::array<int, 3>>& transpose_plan,
-                        std::vector<transpose_type>&     transpose_types)
+                        std::vector<std::array<int, 3>>&  transpose_plan,
+                        std::vector<transpose_type>&      transpose_types)
 {
     transpose_plan.clear();
     transpose_types.clear();
 
-    int                          prod = input_grid[0] * input_grid[1] * input_grid[2];
+    int prod = input_grid[0] * input_grid[1] * input_grid[2];
     std::set<std::array<int, 3>> pencils;
 
     // for each axis, generate the pencil with 1 in that axis, as balanced as possible
     for(int pos = 0; pos < 3; ++pos)
     {
-        // axes to split: the two that are not 'pos'
-        size_t split_a = (pos + 1) % 3;
-        size_t split_b = (pos + 2) % 3;
-    
+        // the two axes to split (not the pencil axis)
+        int split_a = (pos + 1) % 3;
+        int split_b = (pos + 2) % 3;
+
+        // find the best factorization that does not exceed axis lengths
         auto [best_a, best_b] = get_most_balanced_proc_pair(
-    prod, static_cast<int>(global_lengths[split_a]), static_cast<int>(global_lengths[split_b]));
+            prod, static_cast<int>(global_lengths[split_a]), static_cast<int>(global_lengths[split_b]));
 
-
+        // assign axes explicitly to avoid confusion
         std::array<int, 3> grid = {0, 0, 0};
-        int                idx  = 0;
-        for(int i = 0; i < 3; ++i)
-            grid[i] = (i == pos) ? 1 : ((idx++ == 0) ? best_a : best_b);
+        grid[pos]     = 1;      // Pencil axis
+        grid[split_a] = best_a; // First split axis
+        grid[split_b] = best_b; // Second split axis
 
         if((grid != input_grid) && (grid != output_grid))
             pencils.insert(grid); // direct insert, no duplicate check needed
@@ -2746,6 +2754,27 @@ void get_transpose_plan(const std::array<int, 3>&        input_grid,
     for(size_t i = 1; i < transpose_plan.size(); ++i)
         transpose_types.push_back(get_transpose_type(transpose_plan[i - 1], transpose_plan[i]));
 }
+
+// **** to delete ***
+
+inline std::string grid_str(const std::array<int, 3>& g)
+{
+    return "{" + std::to_string(g[0]) + "," + std::to_string(g[1]) + "," + std::to_string(g[2])
+           + "}";
+}
+
+void print_transpose_plan(const std::vector<std::array<int, 3>>& grids,
+                          const std::vector<transpose_type>&     trans_types)
+{
+    std::cout << "Grids sequence:\n";
+    for(const auto& g : grids)
+        std::cout << "  " << grid_str(g) << "\n";
+
+    std::cout << "Transpose types:\n";
+    for(const auto& t : trans_types)
+        std::cout << "  " << transpose_type_str(t) << "\n";
+}
+
 
 bool rocfft_plan_t::BuildOptMultiDevicePlan()
 {
@@ -2843,6 +2872,14 @@ bool rocfft_plan_t::BuildOptMultiDevicePlan()
     {
 
         get_transpose_plan(in_grid, out_grid, {lengths[0], lengths[1], lengths[2]}, grids_sequence, transpose_sequence);
+
+        // *** DEBUG HERE *****
+        std::cout << "debugging pencil_to_pencil = " << pencil_to_pencil << std::endl;
+        std::array<int, 3>              in_grid222{4, 8, 4}, out_grid222{8, 4, 4};
+        std::vector<std::array<int, 3>> grids_sequence222;
+        std::vector<transpose_type>     transpose_sequence222;
+        get_transpose_plan(in_grid222, out_grid222, grids_sequence222, transpose_sequence222);
+        print_transpose_plan(grids_sequence222, transpose_sequence222);
 
         pencil_to_pencil = std::all_of(
             transpose_sequence.begin(), transpose_sequence.end(), [](transpose_type t) {
